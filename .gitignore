@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.python-version
+*.egg-info/
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# Per-cell intermediate videos used to build the cinematic grids -- the
+# composited grid_*.mp4 files are what we commit.
+results/v2/final_pilot/cinematic_grids/cells/
+
+# Local sweep / iteration directories that don't belong in the repo.
+results/v2/iter*/
+results/v2/iter_pilot_*/
+results/v2/iter_pn/
+results/v2/final/
+results/v2/final5*/
+results/v2/final_stress/
+results/v2/showcase_videos/
+results/v2/map_*/
+results/v2/demo_*/
+results/v2/compare_*/
+results/v2/ablation_*/
+results/v2/smart_*/
+results/v2/juke_*/
+results/v2/non_evasive/
+results/v2/evasive*/
+results/v2/test_*.mp4
+results/v2/scan_*.txt
+results/v2/*.log
+results/v2/PAPER_SUMMARY.png
+results/v2/PAPER_SUMMARY_v2.png
+results/v2/videos_summary.csv
+# Legacy v1 results directory (CBF-shield era) -- kept locally only.
+results/iter*/
+results/analysis_*/
+results/evasive*/
+results/non_evasive/
+results/batch_summary.csv
+
+# Paper sources / drafts (kept locally, not in public repo).
+main2.tex
+*.pdf
+*.aux
+*.log
+*.out
+*.synctex.gz

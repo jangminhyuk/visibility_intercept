@@ -105,15 +105,117 @@ plot, MPPI snapshots, 3D trajectory, and optional MP4.
 
 ## Method ablation (paper Sec. VII + naive baseline)
 
-| Method id | Architecture | Cost / aggregation |
-|-----------|--------------|--------------------|
-| `pn` | Proportional navigation (no MPPI) | reactive LOS-pursuit body-rate + near-max thrust |
-| `range_only` | MPPI, range terms only | mean over scenarios |
-| `visibility_cost` | MPPI + h_V penalty + visual-loss event | mean |
-| `feasibility_aware` | MPPI + h_V + μ_V | mean |
-| `full` | MPPI + h_V + μ_V + η_V | mean + CVaR<sub>α<sub>R</sub></sub> + rollout gate (Eq. 27) |
+All four MPPI variants share the same machinery (same number of samples,
+same horizon, same softmin update, same PN warmstart for the nominal
+trajectory).  They differ only in the **cost function** that scores each
+sampled trajectory.
 
-`pn` is the naive baseline; the other four are the MPPI ablations.
+### Cost terms in the paper (Eq. 24)
+
+For a sampled defender trajectory rolled forward against a sampled
+intruder scenario:
+
+| Term | What it penalizes |
+|------|-------------------|
+| q<sub>ρ</sub> Σρ<sub>k</sub>² + q<sub>f</sub> [ρ<sub>N</sub>−r<sub>c</sub>]<sub>+</sub>² | **Range** — distance to attacker over the horizon + terminal miss |
+| q<sub>V</sub> [h<sub>safe</sub>−h<sub>V,k</sub>]<sub>+</sub>² | **Visibility** — target inside the camera cone |
+| q<sub>μ</sub> [μ<sub>safe</sub>−μ<sub>V,k</sub>]<sub>+</sub>² | **Feasibility** — body-rate budget *can* maintain visibility |
+| q<sub>η</sub> [η<sub>safe</sub>−η<sub>V,k</sub>]<sub>+</sub>² | **Command-level** — the *sampled* command satisfies the visibility-rate inequality |
+| q<sub>B</sub>[τ<sub>I</sub>−τ<sub>B</sub>]<sub>+</sub>² + q<sub>L</sub>[τ<sub>I</sub>−τ<sub>L</sub>]<sub>+</sub>² | **Event penalty** — late intercept (after breach or after lock loss) |
+
+### What each method turns on
+
+| Method | Range | h<sub>V</sub> | μ<sub>V</sub> | η<sub>V</sub> | Risk score | Gate |
+|--------|:-----:|:-------------:|:-------------:|:-------------:|:----------:|:----:|
+| `pn` (naive) | — | — | — | — | (no MPPI) | — |
+| `range_only` | ✓ | | | | mean over scenarios | off |
+| `visibility_cost` | ✓ | ✓ | | | mean | off |
+| `feasibility_aware` | ✓ | ✓ | ✓ | | mean | off |
+| **`full`** (proposed) | ✓ | ✓ | ✓ | ✓ | **(1−κ) mean + κ CVaR<sub>α</sub>** | **on** |
+
+`pn` is the naive baseline (reactive proportional navigation with no
+MPPI, no anticipation); the other four are the MPPI ablations.
+
+### What each new term is actually telling the planner
+
+#### 1. `range_only` → `visibility_cost` : add **h<sub>V</sub>** (current visibility)
+
+- **Question it answers**: "Is the target *currently* inside the camera cone?"
+- **Why it matters**: A range-only planner will happily plan a trajectory
+  where the body pitches hard for thrust and the target leaves the FoV.
+  Adding h<sub>V</sub> says "keep the target in view".
+- **When it fires**: when a sampled trajectory predicts h<sub>V</sub>
+  dipping below `h_safe` somewhere over the horizon.
+
+#### 2. `visibility_cost` → `feasibility_aware` : add **μ<sub>V</sub>** (visibility *feasibility* margin)
+
+- μ<sub>V</sub> = Ω<sub>max</sub>‖c<sub>Ω</sub>‖<sub>1</sub> + c<sub>v</sub> + α<sub>V</sub>h<sub>V</sub> − ζ<sub>V</sub>
+- **Question it answers**: "Can *any* admissible body rate keep the target
+  in view at this geometry?"
+- **Why it matters**: The target can be inside the FoV (h<sub>V</sub>>0)
+  while the line-of-sight is rotating so fast that no body rate in the
+  box ‖Ω‖<sub>∞</sub>≤Ω<sub>max</sub> can keep up.  h<sub>V</sub> alone
+  doesn't see this; μ<sub>V</sub> does.
+- **When it fires**: when the LOS angular rate exceeds the defender's
+  available body-rate authority — i.e. the body-rate budget becomes
+  binding.
+
+#### 3. `feasibility_aware` → `full` : add **η<sub>V</sub>**, **CVaR**, and the **rollout gate**
+
+Three things at once:
+
+**η<sub>V</sub>** = c<sub>Ω</sub>ᵀΩ<sub>D</sub> + c<sub>v</sub> + α<sub>V</sub>h<sub>V</sub> − ζ<sub>V</sub>
+- **Question it answers**: "Does the *specific* body rate I'm sampling
+  satisfy the visibility-rate inequality?"
+- **Why it matters**: μ<sub>V</sub> says *some* body rate can preserve
+  visibility.  η<sub>V</sub> says *this particular* body rate I'm about
+  to apply does.  The planner can be in a feasible geometry
+  (μ<sub>V</sub>>0) and still choose a command that loses visibility
+  because it didn't pay attention to the c<sub>Ω</sub> direction.
+- **When it fires**: per-sample — penalizes any sample whose body-rate
+  vector points the wrong way for the current geometry.
+
+**CVaR aggregation** (instead of plain mean over scenarios)
+- **Question it answers**: "How does this defender trajectory do against
+  the *worst* of the sampled attacker scenarios, not the average?"
+- **Why it matters**: With M intruder scenarios in the tube, a plan that
+  has good mean cost but a catastrophic outlier (one attacker maneuver
+  it can't handle) will be picked by mean aggregation.  CVaR<sub>α</sub>
+  upweights the worst-(1−α) fraction of scenarios, biasing the planner
+  toward plans that are robust to *all* sampled attackers.
+- **When it fires**: always present in `full`; it only changes the
+  planner's choice when the cost distribution over scenarios is
+  heavy-tailed (rare hard attacker behaviors).
+
+**Rollout gate (Eq. 27)** — strict filter
+- **Question it answers**: "Are there *any* samples in this batch with
+  zero predicted visibility violations?  If yes, use only those."
+- **Why it matters**: Even with strong soft costs, MPPI's softmin can
+  blend a "mostly good" sample with a "mostly bad" sample.  The gate
+  prevents that — if some samples cleanly satisfy the visibility
+  constraints across all scenarios, weight only those.
+- **When it fires**: whenever some-but-not-all samples have
+  G<sub>i</sub> ≤ tol.  If no samples are clean, fall back to penalty
+  mode and flag the engagement as "visibility-stressed".
+
+### Where the additional cost terms earn their complexity
+
+The four MPPI variants converge to similar numbers in the current
+headline setup, because the PN warmstart already provides strong
+reactive tracking and the body-rate budget (Ω<sub>max</sub> = 14 rad/s)
+isn't binding against the attacker's LOS angular rate (~3–5 rad/s
+during break).  μ<sub>V</sub> stays positive, the gate doesn't filter
+anything, and CVaR matches the mean.  The visibility-aware cost terms
+provide a *safety net* that never has to engage.
+
+The terms matter in **stressed regimes** — tighter Ω<sub>max</sub>
+and/or more aggressive attacker breaks, where the LOS angular rate
+approaches the defender's body-rate authority.  In those regimes,
+μ<sub>V</sub> goes negative for some rollouts, the gate filters
+genuinely-bad samples, and CVaR pulls plan choice toward robust
+trajectories.  This is the regime in which the proposed method clearly
+pulls ahead of Range-MPPI; the comfortable regime in the headline is
+where it just ties.
 
 ## Engagement design
 

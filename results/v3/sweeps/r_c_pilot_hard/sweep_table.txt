@@ -1,0 +1,13 @@
+# Parameter sweep: geom.r_c
+# attacker: pilot_hard, n=40 per point per method
+
+          geom.r_c      Naive PN    Range-MPPI   Vision-MPPI     Feas-MPPI      Proposed
+                 1           0%            5%            2%            0%            0%   
+               1.5           0%           10%           12%            8%            8%   
+                 2           5%           15%           18%           15%           15%   
+               2.5           8%           30%           30%           22%           28%   
+                 3          18%           48%           50%           38%           40%   
+               3.5          28%           57%           60%           57%           57%   
+               3.8          30%           65%           68%           62%           70%   
+
+(Columns: strict P_succ per method.)

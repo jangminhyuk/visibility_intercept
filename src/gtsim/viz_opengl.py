@@ -825,9 +825,20 @@ class OpenGLReplayRenderer:
                                width=1.0, dashed=True)
 
         # ----- MPPI candidate fan -----
+        # Each candidate starts at p_D (the eye), so its first vertex sits
+        # exactly at the camera origin and the leading segment projects
+        # degenerately through the near plane.  Drop any vertices that
+        # are not safely ahead of the eye along the boresight.
         if frame_state.get("mppi_samples") is not None:
+            eye = np.asarray(frame_state["p_D"], dtype=float)
+            fwd = np.asarray(frame_state["R_D"], dtype=float) @ b_c
+            near_keep = 0.30
             for color, pts in frame_state["mppi_samples"]:
-                self._polyline(pts, color, width=1.4)
+                arr = np.asarray(pts, dtype=float)
+                depth = (arr - eye) @ fwd
+                mask = depth > near_keep
+                if int(mask.sum()) >= 2:
+                    self._polyline(arr[mask], color, width=1.4)
 
         # ----- Intruder trail only (defender trail is invisible from
         # inside its own cockpit). -----

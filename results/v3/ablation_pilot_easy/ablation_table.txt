@@ -5,13 +5,13 @@ method                                P_succ  intercept   breach   vis_loss    h
 ---------------------------------------------------------------------------------------------------------------
 Naive PN
 (proportional navigation,
-no anticipation)      50%        95%       5%         0%   -0.064    +0.50    0.2507   0.690
+no anticipation)      50%        93%       7%         0%   -0.055    -2.30    0.2751   0.690
 Range-MPPI
-(no visibility cost)          97%       100%       0%         0%   +0.076    +0.70    0.0575   0.740
+(no visibility cost)          93%        97%       3%         0%   +0.080    +0.27    0.0760   0.730
 Vision-MPPI
-(field-of-view penalty)      97%       100%       0%         0%   +0.082    +0.72    0.0562   0.740
+(field-of-view penalty)      93%        97%       3%         0%   +0.076    +0.13    0.0788   0.730
 Feasibility-MPPI
-(+ body-rate margin)      95%        98%       2%         0%   +0.085    +0.70    0.0553   0.740
+(+ body-rate margin)      92%        93%       7%         0%   +0.079    +0.20    0.0862   0.730
 Proposed (Scenario-risk
-MPPI + rollout gate)      95%        98%       2%         0%   +0.085    +0.73    0.0601   0.740
+MPPI + rollout gate)      93%        95%       5%         0%   +0.078    +0.08    0.0771   0.740
 ================================================================================================

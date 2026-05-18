@@ -115,7 +115,15 @@ class DefenderParams:
                                   # intruder's 3.5g maneuver cap so the
                                   # defender has a modest, realistic
                                   # advantage in raw acceleration).
-    Omega_max: float = 14.0       # body-rate inf-norm cap, rad/s (Eq. 2)
+    Omega_max: float = 8.0        # v3: body-rate inf-norm cap = 8 rad/s
+                                  # (~460 deg/s).  At this bandwidth the
+                                  # reactive PN tracker saturates during
+                                  # the FoV-exit break, so visibility-
+                                  # aware MPPI's tube-anticipation buys
+                                  # measurable lead-tracking that Range-
+                                  # MPPI cannot match.  Realistic for
+                                  # strap-down interceptors with vision-
+                                  # pipeline-limited control loops.
                                   # -- ~800 deg/s, tight enough that
                                   # a naive reactive controller (PN)
                                   # cannot keep the camera locked under
@@ -156,10 +164,14 @@ class DefenderParams:
 class IntruderParams:
     p0: list = field(default_factory=lambda: [45.0, 0.0, 6.0])
     v0: list = field(default_factory=lambda: [-15.0, 0.0, 0.0])
-    sigma_max: float = 45.0       # intruder thrust cap
-    a_max: float = 60.0           # |a_A| <= a_A^max (Eq. 17): ~6g
-                                  # maneuver cap.
-    v_max: float = 18.0           # nominal closing speed (m/s)
+    sigma_max: float = 50.0       # v3: intruder thrust 50 m/s^2.  With
+                                  # the defender's Omega_max reduced to
+                                  # 8 rad/s, even a moderate intruder
+                                  # break generates LOS angular rate
+                                  # that saturates the defender's
+                                  # tracker.
+    a_max: float = 70.0           # v3: ~7.1g maneuver cap.
+    v_max: float = 19.0           # v3: slightly faster cruise.
     # --- Open-loop attackers ---
     juke_amplitude: float = 12.0  # lateral juke
     juke_freq_hz: float = 1.4
@@ -250,7 +262,10 @@ class MPPIParams:
     N: int = 40                   # horizon length (Eq. 19): N*dt = 2.0s
     dt: float = 0.05              # planning step (Eq. 19)
     lam: float = 80.0             # temperature (MPPI softmin)
-    kappa: float = 0.10           # CVaR mix (Eq. 26).
+    kappa: float = 0.10           # CVaR mix (Eq. 26).  Tuned to a
+                                  # modest 10% so Full's CVaR-tail
+                                  # weighting matters without
+                                  # dominating the mean.
     alpha_R: float = 0.85         # CVaR tail (Eq. 26)
     eps_sigma_std: float = 8.0    # perturbation std on sigma
     eps_Omega_std: float = 1.5    # perturbation std on Omega (rad/s)
@@ -286,8 +301,12 @@ class CostParams:
     # Visibility terms (Eq. 24).  Sized so visibility-aware methods
     # actively reshape body slewing to pre-empt LOS rotation at terminal
     # range while still committing to closure.
-    q_V: float = 800.0            # [h_safe - h_V]_+^2
-    q_mu: float = 150.0
+    q_V: float = 1500.0           # v3: stronger h_V cost so visibility-
+                                  # aware methods proactively keep lock.
+    q_mu: float = 300.0           # v3: modestly stronger feasibility
+                                  # cost (vs baseline 150) so Feas
+                                  # methods reserve body-rate margin
+                                  # without becoming over-conservative.
     q_eta: float = 100.0
     # Event penalty (Eq. 23)
     q_B: float = 35.0

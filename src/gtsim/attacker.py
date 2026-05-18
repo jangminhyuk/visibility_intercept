@@ -178,6 +178,8 @@ def pilot_attacker_command(
     dt: float,
     *,
     hard: bool,
+    defender_R: np.ndarray | None = None,
+    fov_exit_mode: bool = False,
 ) -> np.ndarray:
     """Realistic "human-pilot" attacker (used for both pilot_easy and
     pilot_hard via the `hard` flag).
@@ -264,24 +266,75 @@ def pilot_attacker_command(
         g_state.in_terminal_break = True
         g_state.terminal_break_t0 = float(t)
         g_state.terminal_break_count += 1
-        # Choose break direction: AWAY from defender's velocity heading
-        # (so the defender has to slew most).  Project v_D onto plane
-        # perp to LOS-to-defender, then break in the opposite direction.
         los_to_def = to_def / max(dist_to_def, 1e-6)
-        v_def_perp = v_D - float(np.dot(v_D, los_to_def)) * los_to_def
-        # Project further onto plane perp to to_hvu so the break is
-        # *lateral* in the natural attack frame.
-        v_def_perp_along_attack = (v_def_perp
-                                    - float(np.dot(v_def_perp, to_hvu)) * to_hvu)
-        n_vperp = float(np.linalg.norm(v_def_perp_along_attack))
-        if n_vperp > 0.5:
-            break_dir = -v_def_perp_along_attack / n_vperp
+        if fov_exit_mode and defender_R is not None:
+            # FoV-exit break: pick the break direction that maximises
+            # the rate of LOS rotation AWAY from the defender's camera
+            # boresight, i.e. anti-parallel to the projection of
+            # b_D = R_D @ b_c onto the plane perpendicular to the LOS
+            # from defender -> attacker.  This is the direction that
+            # makes h_V = b_D . r_hat - cos(theta_F) drop fastest.
+            b_c_body = np.asarray(cfg.defender.b_c, dtype=float)
+            b_c_norm = float(np.linalg.norm(b_c_body))
+            if b_c_norm > 1e-9:
+                b_c_body = b_c_body / b_c_norm
+            R_D = np.asarray(defender_R, dtype=float).reshape(3, 3)
+            b_D_world = R_D @ b_c_body
+            # LOS from defender to attacker (r_hat in the h_V formula).
+            r_def_to_att = -to_def
+            r_norm = float(np.linalg.norm(r_def_to_att))
+            if r_norm > 1e-9:
+                r_hat = r_def_to_att / r_norm
+            else:
+                r_hat = -los_to_def
+            b_perp = b_D_world - float(np.dot(b_D_world, r_hat)) * r_hat
+            n_bp = float(np.linalg.norm(b_perp))
+            if n_bp > 0.05:
+                # Break OPPOSITE to b_perp so attacker velocity reduces
+                # b_D . r_hat (drops h_V fastest).  Project onto plane
+                # perp to to_hvu so the break is lateral.
+                fov_break = -b_perp / n_bp
+                fov_break = (fov_break
+                             - float(np.dot(fov_break, to_hvu)) * to_hvu)
+                n_fb = float(np.linalg.norm(fov_break))
+                if n_fb > 0.05:
+                    break_dir = fov_break / n_fb
+                else:
+                    rng = g_state.rng
+                    r = rng.normal(size=3)
+                    r -= float(r @ to_hvu) * to_hvu
+                    break_dir = _safe_unit(r,
+                                           default=np.array([0.0, 1.0, 0.0]))
+            else:
+                # Camera nearly perfectly on-axis; any perpendicular
+                # direction exits the cone equally, so pick one
+                # consistent with anti-defender-velocity.
+                v_def_perp = (v_D
+                              - float(np.dot(v_D, los_to_def)) * los_to_def)
+                v_def_perp -= float(np.dot(v_def_perp, to_hvu)) * to_hvu
+                n_vperp = float(np.linalg.norm(v_def_perp))
+                if n_vperp > 0.5:
+                    break_dir = -v_def_perp / n_vperp
+                else:
+                    rng = g_state.rng
+                    r = rng.normal(size=3)
+                    r -= float(r @ to_hvu) * to_hvu
+                    break_dir = _safe_unit(r,
+                                           default=np.array([0.0, 1.0, 0.0]))
         else:
-            # Defender not yet committed laterally -- pick a random side.
-            rng = g_state.rng
-            r = rng.normal(size=3)
-            r -= float(r @ to_hvu) * to_hvu
-            break_dir = _safe_unit(r, default=np.array([0.0, 1.0, 0.0]))
+            # Default pilot break: AWAY from defender's velocity heading
+            # (so the defender has to slew most).
+            v_def_perp = v_D - float(np.dot(v_D, los_to_def)) * los_to_def
+            v_def_perp_along_attack = (
+                v_def_perp - float(np.dot(v_def_perp, to_hvu)) * to_hvu)
+            n_vperp = float(np.linalg.norm(v_def_perp_along_attack))
+            if n_vperp > 0.5:
+                break_dir = -v_def_perp_along_attack / n_vperp
+            else:
+                rng = g_state.rng
+                r = rng.normal(size=3)
+                r -= float(r @ to_hvu) * to_hvu
+                break_dir = _safe_unit(r, default=np.array([0.0, 1.0, 0.0]))
         # Slight bias to keep break mostly horizontal.
         break_dir[2] *= 0.45
         break_dir = _safe_unit(break_dir, default=break_dir)
@@ -343,14 +396,27 @@ def smart_attacker_command(
     t: float,
     g_state: SmartAttackerState,
     dt: float,
+    defender_R: np.ndarray | None = None,
 ) -> np.ndarray:
     """Back-compat wrapper.  Routes to the appropriate pilot variant
-    based on `cfg.scenario.attacker_mode`.  Modes 'smart' and 'pilot_hard'
-    are aliases; 'pilot_easy' is the milder banking-pilot."""
+    based on `cfg.scenario.attacker_mode`.
+
+    Modes:
+      smart / pilot_hard  -- aggressive banking break perpendicular to
+                             defender velocity (existing behaviour).
+      pilot_easy          -- milder banking-pilot.
+      pilot_fov_exit      -- like pilot_hard but break direction is
+                             aimed to drive the defender's camera
+                             boresight off the LOS as fast as possible.
+                             Requires defender_R.
+    """
     mode = cfg.scenario.attacker_mode
-    hard = mode in ("smart", "pilot_hard")
+    hard = mode in ("smart", "pilot_hard", "pilot_fov_exit")
+    fov_exit = (mode == "pilot_fov_exit")
     return pilot_attacker_command(cfg, state, defender_p, defender_v, t,
-                                  g_state, dt, hard=hard)
+                                  g_state, dt, hard=hard,
+                                  defender_R=defender_R,
+                                  fov_exit_mode=fov_exit)
 
 
 def attacker_attitude_from_accel(a: np.ndarray, g: float) -> np.ndarray:

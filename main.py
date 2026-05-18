@@ -82,6 +82,7 @@ ATTACKER_LABEL = {
     "smart":            "Hard pilot (banking break)",
     "pilot_hard":       "Hard pilot (banking break)",
     "pilot_easy":       "Easy pilot (gentle banking)",
+    "pilot_fov_exit":   "FoV-exit pilot (camera-aware break)",
     "juke_sinusoidal":  "Sinusoidal juke attacker",
     "juke_bangbang":    "Bang-bang juke attacker",
     "straight":         "Straight-line attacker",
@@ -1251,6 +1252,7 @@ def main(argv: list[str] | None = None) -> int:
                         help="Comma-separated list (overrides --method).")
     parser.add_argument("--attacker", type=str, default="pilot_hard",
                         choices=["smart", "pilot_hard", "pilot_easy",
+                                 "pilot_fov_exit",
                                  "juke_sinusoidal",
                                  "juke_bangbang", "straight"])
     parser.add_argument("--attackers", type=str, default="",

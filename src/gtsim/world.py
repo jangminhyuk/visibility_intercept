@@ -268,11 +268,12 @@ class World:
     # ------------------------------------------------------------------ #
     def _step_attacker(self) -> None:
         mode = self.cfg.scenario.attacker_mode
-        if mode in ("smart", "pilot_hard", "pilot_easy"):
+        if mode in ("smart", "pilot_hard", "pilot_easy", "pilot_fov_exit"):
             a = smart_attacker_command(
                 self.cfg, self.intruder,
                 self.defender.p, self.defender.v,
                 self.t, self.attacker_g, self.cfg.sim.dt_sim,
+                defender_R=self.defender.R,
             )
         else:
             a = attacker_command(self.cfg, self.intruder, self.t)

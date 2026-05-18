@@ -60,11 +60,17 @@ def method_weights(method: str) -> dict:
         return dict(q_V_mul=0.0, q_mu_mul=0.0, q_eta_mul=0.0, q_L_mul=0.0,
                     use_cvar=False, use_gate=False, use_mppi=True)
     if method == "visibility_cost":
+        # v3 improvement: enable the rollout gate for Vision-MPPI so it
+        # hard-filters samples that would push h_V below h_safe.  Range-
+        # MPPI does not get this filter (its q_V_mul=0 means the violation
+        # term is identically zero even if the gate were enabled).
         return dict(q_V_mul=1.0, q_mu_mul=0.0, q_eta_mul=0.0, q_L_mul=1.0,
-                    use_cvar=False, use_gate=False, use_mppi=True)
+                    use_cvar=False, use_gate=True, use_mppi=True)
     if method == "feasibility_aware":
+        # v3 improvement: enable the rollout gate so Feas-MPPI hard-
+        # filters on BOTH h_V and mu_V violations.
         return dict(q_V_mul=1.0, q_mu_mul=1.0, q_eta_mul=0.0, q_L_mul=1.0,
-                    use_cvar=False, use_gate=False, use_mppi=True)
+                    use_cvar=False, use_gate=True, use_mppi=True)
     if method == "full":
         return dict(q_V_mul=1.0, q_mu_mul=1.0, q_eta_mul=1.0, q_L_mul=1.0,
                     use_cvar=True, use_gate=True, use_mppi=True)
@@ -152,13 +158,8 @@ class IntruderParams:
     v0: list = field(default_factory=lambda: [-15.0, 0.0, 0.0])
     sigma_max: float = 45.0       # intruder thrust cap
     a_max: float = 60.0           # |a_A| <= a_A^max (Eq. 17): ~6g
-                                  # maneuver cap.  Roughly matches the
-                                  # defender's lateral capability so
-                                  # the intruder's reactive break can
-                                  # generate LOS angular rate near the
-                                  # defender's tracking bandwidth limit.
-    v_max: float = 18.0           # nominal closing speed (m/s); defender
-                                  # reachable speed remains higher
+                                  # maneuver cap.
+    v_max: float = 18.0           # nominal closing speed (m/s)
     # --- Open-loop attackers ---
     juke_amplitude: float = 12.0  # lateral juke
     juke_freq_hz: float = 1.4
@@ -249,10 +250,7 @@ class MPPIParams:
     N: int = 40                   # horizon length (Eq. 19): N*dt = 2.0s
     dt: float = 0.05              # planning step (Eq. 19)
     lam: float = 80.0             # temperature (MPPI softmin)
-    kappa: float = 0.10           # v3: moderate CVaR mix (Eq. 26).
-                                  # Heavy enough to bias Full toward
-                                  # tail-safe rollouts, light enough
-                                  # not to over-prune useful samples.
+    kappa: float = 0.10           # CVaR mix (Eq. 26).
     alpha_R: float = 0.85         # CVaR tail (Eq. 26)
     eps_sigma_std: float = 8.0    # perturbation std on sigma
     eps_Omega_std: float = 1.5    # perturbation std on Omega (rad/s)
@@ -271,11 +269,13 @@ class MPPIParams:
     # toned-down attacker regime more rollouts are actually clean, so a
     # mild tolerance (0.30) makes the gate genuinely filter samples
     # instead of always falling back to penalty mode.
-    gate_tol: float = 0.30       # v3: moderate, so the rollout gate
-                                 # filters genuinely-violating samples
-                                 # without crushing the population.
+    gate_tol: float = 0.08       # v3: moderate gate -- filters samples
+                                 # whose h_V dips ~0.08 below h_safe
+                                 # over the horizon.  Tight enough to
+                                 # discriminate, loose enough that the
+                                 # gate doesn't collapse the population.
     gate_min_keep: int = 24
-    gate_penalty_weight: float = 40.0
+    gate_penalty_weight: float = 60.0
 
 
 @dataclass
@@ -288,18 +288,11 @@ class CostParams:
     # range while still committing to closure.
     q_V: float = 800.0            # [h_safe - h_V]_+^2
     q_mu: float = 150.0
-    q_eta: float = 100.0         # v3: substantial eta_V cost so Full
-                                 # actively reshapes rollouts away
-                                 # from command-level boundary
-                                 # violations, but not so heavy that
-                                 # it dominates the closure term.
+    q_eta: float = 100.0
     # Event penalty (Eq. 23)
     q_B: float = 35.0
     q_L: float = 400.0            # visual-loss event ⇒ stale predictor
-                                  # ⇒ terminal commit miss; moderate
-                                  # weight pushes planner toward
-                                  # tracking-friendly paths without
-                                  # blocking closure.
+                                  # ⇒ terminal commit miss.
     # Control effort (Eq. 24)
     q_Omega: float = 0.04
     q_sigma: float = 0.05
@@ -318,11 +311,7 @@ class EstimatorParams:
     estimate degrading.
     """
     latency: float = 0.10         # sensing latency (s) -- realistic
-                                  # camera processing delay (~100 ms,
-                                  # typical for a vision pipeline).
-                                  # This is what makes naive PN's
-                                  # reactive control fail vs MPPI's
-                                  # tube-based anticipation.
+                                  # camera processing delay (~100 ms).
     pos_noise_std: float = 0.07   # additive Gaussian std on position (m)
     vel_noise_std: float = 0.20   # additive Gaussian std on velocity (m/s)
     # Vision-coupled estimator: only ingest a new sample when h_V > 0.

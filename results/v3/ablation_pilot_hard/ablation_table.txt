@@ -9,9 +9,9 @@ no anticipation)      28%        55%      45%         0%   -0.279    +0.50    0.
 Range-MPPI
 (no visibility cost)          72%        73%      27%         0%   +0.020    +0.69    0.1944   0.745
 Vision-MPPI
-(field-of-view penalty)      70%        73%      27%         0%   +0.018    +0.68    0.1854   0.750
+(field-of-view penalty)      70%        73%      27%         0%   +0.018    +0.68    0.1856   0.750
 Feasibility-MPPI
-(+ body-rate margin)      72%        75%      25%         0%   +0.037    +0.69    0.1718   0.750
+(+ body-rate margin)      72%        73%      27%         0%   +0.039    +0.69    0.1846   0.750
 Proposed (Scenario-risk
-MPPI + rollout gate)      68%        70%      30%         0%   +0.026    +0.68    0.1918   0.750
+MPPI + rollout gate)      68%        68%      32%         0%   +0.028    +0.65    0.1935   0.760
 ================================================================================================

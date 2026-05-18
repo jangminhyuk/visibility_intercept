@@ -11,7 +11,7 @@ Range-MPPI
 Vision-MPPI
 (field-of-view penalty)      97%       100%       0%         0%   +0.082    +0.72    0.0562   0.740
 Feasibility-MPPI
-(+ body-rate margin)      95%        98%       2%         0%   +0.086    +0.73    0.0572   0.740
+(+ body-rate margin)      95%        98%       2%         0%   +0.085    +0.70    0.0553   0.740
 Proposed (Scenario-risk
-MPPI + rollout gate)      95%        98%       2%         0%   +0.086    +0.73    0.0528   0.740
+MPPI + rollout gate)      95%        98%       2%         0%   +0.085    +0.73    0.0601   0.740
 ================================================================================================

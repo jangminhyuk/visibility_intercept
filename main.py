@@ -489,7 +489,12 @@ def cmd_demo(args: argparse.Namespace) -> int:
 
 def cmd_videos(args: argparse.Namespace) -> int:
     methods = args.methods.split(",") if args.methods else list(PLANNER_METHODS)
-    attackers = args.attackers.split(",") if args.attackers else ["smart"]
+    if args.attackers:
+        attackers = args.attackers.split(",")
+    elif args.attacker:
+        attackers = [args.attacker]
+    else:
+        attackers = ["smart"]
     out_root = Path(args.out_dir)
     out_root.mkdir(parents=True, exist_ok=True)
     seeds = list(range(args.n))
@@ -1015,7 +1020,12 @@ def cmd_ablation(args: argparse.Namespace) -> int:
     out_root = Path(args.out_dir)
     out_root.mkdir(parents=True, exist_ok=True)
     methods = args.methods.split(",") if args.methods else list(PLANNER_METHODS)
-    attackers = args.attackers.split(",") if args.attackers else ["smart"]
+    if args.attackers:
+        attackers = args.attackers.split(",")
+    elif args.attacker:
+        attackers = [args.attacker]
+    else:
+        attackers = ["smart"]
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as _plt

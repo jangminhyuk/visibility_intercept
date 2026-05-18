@@ -3,7 +3,7 @@ scenarios (pilot_hard and pilot_easy), across multiple showcase seeds.
 
 For each (attacker, seed) pair, renders 5 individual cinematic OpenGL
 videos at 640x360 and stitches them into a 2x3 grid with a per-method
-numbers panel.  Output: results/v2/final_pilot/cinematic_grids/
+numbers panel.  Output: results/v3/cinematic_grids/
 """
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ def main():
     parser.add_argument("--cell-width", type=int, default=640)
     parser.add_argument("--cell-height", type=int, default=360)
     parser.add_argument("--out-root", type=str,
-                        default=str(ROOT / "results/v2/final_pilot/cinematic_grids"))
+                        default=str(ROOT / "results/v3/cinematic_grids"))
     args = parser.parse_args()
 
     out_root = Path(args.out_root)

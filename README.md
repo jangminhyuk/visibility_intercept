@@ -11,25 +11,30 @@ The simulator demonstrates that visibility-aware MPPI substantially
 beats a naive reactive baseline against realistic banking-pilot
 attackers, while remaining competitive on closure.
 
-## Headline result (n=60 per method, see `results/v2/RESULTS.md`)
+## Headline result (n=60 per method, see `results/v3/RESULTS.md`)
 
 | Method | Hard attacker P_succ | Easy attacker P_succ |
 |--------|---------------------:|---------------------:|
-| Naive proportional navigation | 40% | 73% |
-| Range-MPPI (no visibility cost) | 85% | 100% |
-| Vision-MPPI (h_V penalty) | 85% | 100% |
-| Feasibility-MPPI (+ μ_V) | 83% | 100% |
-| **Proposed (scenario-risk MPPI + rollout gate)** | **83%** | **100%** |
+| Naive proportional navigation | 28% | 50% |
+| Range-MPPI (no visibility cost) | 72% | 97% |
+| Vision-MPPI (h_V penalty) | 70% | 97% |
+| Feasibility-MPPI (+ μ_V) | 72% | 95% |
+| Proposed (scenario-risk MPPI + rollout gate) | 68% | 95% |
 
 `P_succ` is the strict success rate
 $\mathbb{P}\left[\tau_I \le \min(\tau_B, \tau_L)\right]$
 (intercept before breach *and* before any visual-loss event).
 
-Proposed beats the naive baseline by **+43 pp** on the hard scenario
-and **+27 pp** on the easy scenario.
+The four MPPI variants beat Naive PN by **+40 pp / +45 pp** on the
+hard / easy scenarios respectively.  Within MPPI the methods are
+statistically tied on P_succ at n=60 (95% CI ≈ ±12 pp).  Full's
+machinery (CVaR mix, rollout gate, η_V cost) instead delivers the
+lowest η-violation integral and tied-best h_min — i.e. a smaller
+safety margin is consumed on the trials it does intercept.  See
+`results/v3/RESULTS.md` for the honest narrative.
 
-The headline figure is `results/v2/PAPER_SUMMARY_v3.png` and the full
-narrative + reproduction commands are in `results/v2/RESULTS.md`.
+The headline figure is `results/v3/PAPER_SUMMARY.png` and the full
+narrative + reproduction commands are in `results/v3/RESULTS.md`.
 
 ## Installation
 
@@ -54,13 +59,13 @@ py -m pytest tests -q     # should print "37 passed"
 ```powershell
 py main.py --mode ablation --n 60 --workers 6 --t-end 7.0 ^
    --attackers pilot_hard,pilot_easy ^
-   --out-dir results/v2/final_pilot
+   --out-dir results/v3
 ```
 
 This runs all five methods (`pn`, `range_only`, `visibility_cost`,
 `feasibility_aware`, `full`) on both attackers and writes per-attacker
 ablation tables, time-series plots, and bar charts to
-`results/v2/final_pilot/ablation_pilot_{hard,easy}/`.
+`results/v3/ablation_pilot_{hard,easy}/`.
 
 ### 2. Build the headline figure
 
@@ -68,7 +73,7 @@ ablation tables, time-series plots, and bar charts to
 py scripts/make_paper_summary.py
 ```
 
-Writes `results/v2/PAPER_SUMMARY_v3.png` — three rows:
+Writes `results/v3/PAPER_SUMMARY.png` — three rows:
 1. Bar charts of intercept rate + strict P_succ per attacker, with the
    Proposed − Naive PN gap callout.
 2. Time-series of h_V / μ_V / η_V / ρ / |Ω| on the hard scenario
@@ -92,7 +97,7 @@ For each showcase seed this:
    method-coloured border per cell and a numbers panel in the
    bottom-right.
 
-Output: `results/v2/final_pilot/cinematic_grids/grid_pilot_{hard,easy}_seed*.mp4`.
+Output: `results/v3/cinematic_grids/grid_pilot_{hard,easy}_seed*.mp4`.
 
 #### 3a. Defender-POV picture-in-picture
 
@@ -109,7 +114,7 @@ py main.py --mode demo --method full --attacker pilot_hard --seed 4 ^
 py scripts/render_cinematic_grid.py ^
    --seeds 1 4 5 12 --attacker pilot_hard ^
    --pip --pip-scale 0.34 ^
-   --out-dir results/v2/final_pilot/cinematic_grids_pip
+   --out-dir results/v3/cinematic_grids_pip
 ```
 
 The POV pass uses `gluPerspective(2·θ_F + margin, …)` with eye at
@@ -125,7 +130,7 @@ unmistakable — the intruder simply walks off the edge of the cone.
 py main.py --mode demo --method full --attacker pilot_hard --seed 4 --video
 ```
 
-Writes `results/v2/demo_pilot_hard_full_seed4/` with the time-series
+Writes `results/demo_pilot_hard_full_seed4/` with the time-series
 plot, MPPI snapshots, 3D trajectory, and optional MP4 (add `--pip` to
 also get `run_pov.mp4` + `run_pip.mp4`).
 
@@ -291,7 +296,7 @@ visibility_intercept/
 │   ├── render_cinematic_grid.py# 5-method cinematic grid (per scenario)
 │   └── render_pilot_grids.py   # batch wrapper around the cinematic grid
 ├── tests/                      # 37 pytest unit + integration tests
-└── results/v2/                 # outputs (final_pilot/, RESULTS.md, PAPER_SUMMARY_v3.png)
+└── results/v3/                 # outputs (ablation_*, cinematic_grids*, RESULTS.md, PAPER_SUMMARY.png)
 ```
 
 ## Paper-symbol → code mapping

@@ -61,7 +61,7 @@ def ts_matrix(runs, field, t_grid):
 
 
 def main():
-    base = ROOT / "results/v2/final_pilot"
+    base = ROOT / "results/v3"
     abl_smart = json.load(open(base / "ablation_pilot_hard/raw_results.json"))
     abl_juke = json.load(open(base / "ablation_pilot_easy/raw_results.json"))
 
@@ -251,7 +251,7 @@ def main():
 
     fig.suptitle("Visibility-Constrained Terminal Guidance — Headline Results",
                  fontweight="bold", fontsize=15, y=0.99)
-    out = ROOT / "results/v2/PAPER_SUMMARY_v3.png"
+    out = ROOT / "results/v3/PAPER_SUMMARY.png"
     plt.savefig(out, dpi=140, bbox_inches="tight")
     print(f"Wrote {out}")
 

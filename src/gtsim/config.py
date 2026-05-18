@@ -228,11 +228,9 @@ class VisibilityParams:
                                   # tracking" margin that distinguishes
                                   # visibility-aware methods
     mu_safe: float = 0.2
-    eta_safe: float = -0.2        # eta_V cost only fires on substantial
-                                  # command-level violation (eta_V < -0.2),
-                                  # not on near-zero residuals.  This is
-                                  # what keeps Full ≈ Feas on the
-                                  # nominal scenario.
+    eta_safe: float = 0.0         # v3: eta_V cost fires on any negative
+                                  # residual, so Full's q_eta term reshapes
+                                  # rollouts even on the nominal scenario.
 
 
 @dataclass
@@ -251,10 +249,10 @@ class MPPIParams:
     N: int = 40                   # horizon length (Eq. 19): N*dt = 2.0s
     dt: float = 0.05              # planning step (Eq. 19)
     lam: float = 80.0             # temperature (MPPI softmin)
-    kappa: float = 0.02           # mean/CVaR mix (Eq. 26) -- minimal
-                                  # so Full ≈ Feas on nominal; CVaR's
-                                  # benefit is visible only on
-                                  # variance-stressing scenarios.
+    kappa: float = 0.10           # v3: moderate CVaR mix (Eq. 26).
+                                  # Heavy enough to bias Full toward
+                                  # tail-safe rollouts, light enough
+                                  # not to over-prune useful samples.
     alpha_R: float = 0.85         # CVaR tail (Eq. 26)
     eps_sigma_std: float = 8.0    # perturbation std on sigma
     eps_Omega_std: float = 1.5    # perturbation std on Omega (rad/s)
@@ -273,11 +271,11 @@ class MPPIParams:
     # toned-down attacker regime more rollouts are actually clean, so a
     # mild tolerance (0.30) makes the gate genuinely filter samples
     # instead of always falling back to penalty mode.
-    gate_tol: float = 1.00       # very loose -- gate essentially a
-                                 # no-op on nominal scenarios, engages
-                                 # only in deeply stressed engagements
-    gate_min_keep: int = 48
-    gate_penalty_weight: float = 15.0
+    gate_tol: float = 0.30       # v3: moderate, so the rollout gate
+                                 # filters genuinely-violating samples
+                                 # without crushing the population.
+    gate_min_keep: int = 24
+    gate_penalty_weight: float = 40.0
 
 
 @dataclass
@@ -290,10 +288,11 @@ class CostParams:
     # range while still committing to closure.
     q_V: float = 800.0            # [h_safe - h_V]_+^2
     q_mu: float = 150.0
-    q_eta: float = 8.0           # eta_V cost: very mild so Full ≈ Feas
-                                 # in nominal scenarios; eta_V's value
-                                 # appears in stressed scenarios where
-                                 # CVaR + gate also matter.
+    q_eta: float = 100.0         # v3: substantial eta_V cost so Full
+                                 # actively reshapes rollouts away
+                                 # from command-level boundary
+                                 # violations, but not so heavy that
+                                 # it dominates the closure term.
     # Event penalty (Eq. 23)
     q_B: float = 35.0
     q_L: float = 400.0            # visual-loss event ⇒ stale predictor

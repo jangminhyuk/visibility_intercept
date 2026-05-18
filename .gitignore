@@ -22,40 +22,33 @@ desktop.ini
 
 # Per-cell intermediate videos used to build the cinematic grids -- the
 # composited grid_*.mp4 files are what we commit.
-results/v2/final_pilot/cinematic_grids/cells/
-results/v2/final_pilot/cinematic_grids_pip/cells/
+results/v3/cinematic_grids/cells/
+results/v3/cinematic_grids_pip/cells/
 
-# Smoke-test outputs from local POV/PiP work.
+# Smoke-test outputs (POV/PiP scratch, parameter sweeps).
 results/pov_smoke/
+results/v3/smoke_*/
+results/v3/iter_*/
+results/v3/scan_*/
+results/v3/sweep_*/
+results/v3/*.log
+results/v3/test_*.mp4
+results/v3/scan_*.txt
+results/v3/videos_summary.csv
 
-# Local sweep / iteration directories that don't belong in the repo.
-results/v2/iter*/
-results/v2/iter_pilot_*/
-results/v2/iter_pn/
-results/v2/final/
-results/v2/final5*/
-results/v2/final_stress/
-results/v2/showcase_videos/
-results/v2/map_*/
-results/v2/demo_*/
-results/v2/compare_*/
-results/v2/ablation_*/
-results/v2/smart_*/
-results/v2/juke_*/
-results/v2/non_evasive/
-results/v2/evasive*/
-results/v2/test_*.mp4
-results/v2/scan_*.txt
-results/v2/*.log
-results/v2/PAPER_SUMMARY.png
-results/v2/PAPER_SUMMARY_v2.png
-results/v2/videos_summary.csv
-# Legacy v1 results directory (CBF-shield era) -- kept locally only.
+# Legacy v1 / v2 results (CBF-shield + first paper-version era) — local only.
+results/v1/
+results/v2/
 results/iter*/
 results/analysis_*/
 results/evasive*/
 results/non_evasive/
 results/batch_summary.csv
+results/demo_*/
+results/compare_*/
+results/map_*/
+results/smart_*/
+results/juke_*/
 
 # Paper sources / drafts (kept locally, not in public repo).
 main2.tex

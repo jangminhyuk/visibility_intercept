@@ -8,7 +8,7 @@ For each showcase seed:
      ffmpeg's xstack filter, with the bottom-right cell holding a
      side-by-side numbers panel.
 
-Output: results/v2/final5j/showcase_grids/cinematic_grid_seed<N>.mp4
+Output: results/v3/cinematic_grids/cinematic_grid_seed<N>.mp4
 
 Usage:
     py scripts/render_cinematic_grid.py --seeds 0 1 5 7 9
@@ -305,7 +305,7 @@ def main():
     parser.add_argument("--cell-width", type=int, default=640)
     parser.add_argument("--cell-height", type=int, default=360)
     parser.add_argument("--out-dir", type=str,
-                        default=str(ROOT / "results/v2/final5j/cinematic_grids"))
+                        default=str(ROOT / "results/v3/cinematic_grids"))
     parser.add_argument("--pip", action="store_true",
                         help="Render defender first-person POV and composite "
                              "as a PiP inset on each cell.")

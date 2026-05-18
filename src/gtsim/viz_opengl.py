@@ -222,14 +222,48 @@ PALETTE = {
     "tube_line": (0.55, 0.55, 0.65, 0.40),
     "vfx_hot": (1.0, 0.75, 0.20, 1.0),
     "vfx_outer": (1.0, 0.35, 0.15, 1.0),
+    "vfx_streak": (1.0, 1.0, 1.0, 1.0),
     "breach_red": (1.0, 0.18, 0.12, 1.0),
     "breach_hot": (1.0, 0.55, 0.30, 1.0),   # bright red-orange core
     "vloss_gold": (0.98, 0.85, 0.18, 1.0),
 }
 
+# Light theme used when rendering for a paper figure (white background).
+# Colors are darkened/saturated so they read against #ffffff; the dark
+# theme above is unchanged.
+PALETTE_WHITE = {
+    "bg_top": (1.0, 1.0, 1.0),
+    "bg_bottom": (1.0, 1.0, 1.0),
+    "grid": (0.55, 0.60, 0.70, 0.55),
+    "asset_glow": (0.10, 0.55, 0.25, 0.22),
+    "asset_core": (0.10, 0.65, 0.25, 1.0),
+    "defender_body": (0.10, 0.40, 0.85, 1.0),
+    "defender_fin": (0.95, 0.65, 0.10, 1.0),
+    "defender_arm": (0.30, 0.35, 0.45, 1.0),
+    "defender_rotor": (0.45, 0.50, 0.60, 0.95),
+    "defender_motor": (0.10, 0.10, 0.12, 1.0),
+    "defender_trail": (0.10, 0.40, 0.85, 1.0),
+    "intruder_body": (0.85, 0.15, 0.10, 1.0),
+    "intruder_arm": (0.55, 0.30, 0.25, 1.0),
+    "intruder_rotor": (0.65, 0.40, 0.35, 0.95),
+    "intruder_motor": (0.18, 0.10, 0.10, 1.0),
+    "intruder_trail": (0.85, 0.15, 0.10, 1.0),
+    "fov_cone": (0.20, 0.50, 0.90, 0.20),
+    "los_line": (0.25, 0.28, 0.38, 0.85),
+    "tube_line": (0.40, 0.42, 0.50, 0.70),
+    "vfx_hot": (0.95, 0.55, 0.05, 1.0),
+    "vfx_outer": (0.90, 0.25, 0.05, 1.0),
+    "vfx_streak": (0.15, 0.15, 0.20, 1.0),
+    "breach_red": (0.85, 0.10, 0.05, 1.0),
+    "breach_hot": (0.95, 0.35, 0.15, 1.0),
+    "vloss_gold": (0.80, 0.60, 0.05, 1.0),
+}
+
 
 class OpenGLReplayRenderer:
-    def __init__(self, width: int = 1280, height: int = 720) -> None:
+    def __init__(self, width: int = 1280, height: int = 720,
+                 white_bg: bool = True,
+                 line_scale: float = 1.0) -> None:
         if not _HAS_GL:
             raise RuntimeError(
                 f"pygame+PyOpenGL not available: {_IMPORT_EXC!r}.  "
@@ -237,7 +271,13 @@ class OpenGLReplayRenderer:
             )
         self.width = width
         self.height = height
+        self.white_bg = bool(white_bg)
+        self.palette = PALETTE_WHITE if self.white_bg else PALETTE
         self.cam = Camera(aspect=width / height)
+        # Multiplier applied to every glLineWidth so trails and MPPI
+        # candidates stay readable when rendering at high resolution
+        # (a 2px line on a 3200x1800 image looks like a hairline).
+        self.line_scale = float(line_scale)
         self._screen = None
         self._font = None
         self._small_font = None
@@ -272,7 +312,7 @@ class OpenGLReplayRenderer:
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         glEnable(GL_LINE_SMOOTH)
         glHint(GL_LINE_SMOOTH_HINT, GL_NICEST)
-        c = PALETTE["bg_bottom"]
+        c = self.palette["bg_bottom"]
         glClearColor(c[0], c[1], c[2], 1.0)
         # Lighting.
         glEnable(GL_LIGHTING)
@@ -280,10 +320,18 @@ class OpenGLReplayRenderer:
         glEnable(GL_COLOR_MATERIAL)
         glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE)
         glLightfv(GL_LIGHT0, GL_POSITION, [12.0, 18.0, 28.0, 1.0])
-        glLightfv(GL_LIGHT0, GL_AMBIENT, [0.30, 0.32, 0.36, 1.0])
-        glLightfv(GL_LIGHT0, GL_DIFFUSE, [0.90, 0.90, 0.95, 1.0])
-        glLightfv(GL_LIGHT0, GL_SPECULAR, [0.45, 0.45, 0.50, 1.0])
-        glLightModelfv(GL_LIGHT_MODEL_AMBIENT, [0.20, 0.22, 0.26, 1.0])
+        if self.white_bg:
+            # Brighter ambient so shadowed sides of bodies still read
+            # against a #ffffff sky.
+            glLightfv(GL_LIGHT0, GL_AMBIENT, [0.40, 0.42, 0.46, 1.0])
+            glLightfv(GL_LIGHT0, GL_DIFFUSE, [0.75, 0.75, 0.78, 1.0])
+            glLightfv(GL_LIGHT0, GL_SPECULAR, [0.30, 0.30, 0.32, 1.0])
+            glLightModelfv(GL_LIGHT_MODEL_AMBIENT, [0.45, 0.46, 0.50, 1.0])
+        else:
+            glLightfv(GL_LIGHT0, GL_AMBIENT, [0.30, 0.32, 0.36, 1.0])
+            glLightfv(GL_LIGHT0, GL_DIFFUSE, [0.90, 0.90, 0.95, 1.0])
+            glLightfv(GL_LIGHT0, GL_SPECULAR, [0.45, 0.45, 0.50, 1.0])
+            glLightModelfv(GL_LIGHT_MODEL_AMBIENT, [0.20, 0.22, 0.26, 1.0])
 
     def shutdown(self) -> None:
         if self._screen is not None:
@@ -338,7 +386,7 @@ class OpenGLReplayRenderer:
         if centre is None:
             centre = np.zeros(3)
         glDisable(GL_LIGHTING)
-        c = PALETTE["grid"]
+        c = self.palette["grid"]
         glColor4f(*c)
         glLineWidth(1.0)
         glBegin(GL_LINES)
@@ -441,7 +489,7 @@ class OpenGLReplayRenderer:
     def _line(self, a, b, color, width=1.5) -> None:
         glDisable(GL_LIGHTING)
         glColor4f(*color)
-        glLineWidth(width)
+        glLineWidth(float(width) * self.line_scale)
         glBegin(GL_LINES)
         glVertex3f(*a); glVertex3f(*b)
         glEnd()
@@ -451,7 +499,7 @@ class OpenGLReplayRenderer:
             return
         glDisable(GL_LIGHTING)
         glColor4f(*color)
-        glLineWidth(width)
+        glLineWidth(float(width) * self.line_scale)
         if dashed:
             glLineStipple(2, 0x00FF)
             glEnable(GL_LINE_STIPPLE)
@@ -491,10 +539,10 @@ class OpenGLReplayRenderer:
                         arm_length: float, palette_prefix: str,
                         draw_fin: bool = True,
                         draw_camera_cone: bool = False) -> None:
-        body_color = PALETTE[f"{palette_prefix}_body"]
-        arm_color = PALETTE[f"{palette_prefix}_arm"]
-        rotor_color = PALETTE[f"{palette_prefix}_rotor"]
-        motor_color = PALETTE[f"{palette_prefix}_motor"]
+        body_color = self.palette[f"{palette_prefix}_body"]
+        arm_color = self.palette[f"{palette_prefix}_arm"]
+        rotor_color = self.palette[f"{palette_prefix}_rotor"]
+        motor_color = self.palette[f"{palette_prefix}_motor"]
         bx = R @ np.array([1.0, 0.0, 0.0])
         by = R @ np.array([0.0, 1.0, 0.0])
         bz = R @ np.array([0.0, 0.0, 1.0])
@@ -517,7 +565,7 @@ class OpenGLReplayRenderer:
             fin_a = centre + bx * (L * 0.16)
             fin_b = centre + bx * (L * 0.32)
             self._cylinder(fin_a, fin_b, L * 0.04,
-                           PALETTE["defender_fin"], slices=8)
+                           self.palette["defender_fin"], slices=8)
 
         # ---------------- Four X-frame arms ----------------
         arm_len = L * 0.55
@@ -564,7 +612,7 @@ class OpenGLReplayRenderer:
         base_radius = length * math.tan(half_angle)
         # Outline circle at the far end + a few slant lines for cone shape.
         glDisable(GL_LIGHTING)
-        c = PALETTE["fov_cone"]
+        c = self.palette["fov_cone"]
         glColor4f(c[0], c[1], c[2], 0.85)
         glLineWidth(1.4)
         # base ring
@@ -614,11 +662,13 @@ class OpenGLReplayRenderer:
              (1.70, 0.18)]):
             r = r_c * (0.35 + rmul * (0.15 + 0.55 * phase))
             a = abase * (1.0 - 0.70 * phase)
-            col = PALETTE["vfx_hot"] if k < 2 else PALETTE["vfx_outer"]
+            col = (self.palette["vfx_hot"] if k < 2
+                   else self.palette["vfx_outer"])
             self._sphere(centre, r, (col[0], col[1], col[2], max(0.05, a)))
         # 18 fragment streaks, shorter
         glDisable(GL_LIGHTING)
-        glColor4f(1.0, 1.0, 1.0, max(0.0, 0.85 - phase))
+        streak = self.palette["vfx_streak"]
+        glColor4f(streak[0], streak[1], streak[2], max(0.0, 0.85 - phase))
         glLineWidth(1.6)
         L = r_c * (0.6 + 2.2 * phase)
         dirs = rng.normal(size=(18, 3))
@@ -642,11 +692,12 @@ class OpenGLReplayRenderer:
              (1.70, 0.18)]):
             r = r_P * (0.35 + rmul * (0.15 + 0.55 * phase))
             a = abase * (1.0 - 0.70 * phase)
-            col = PALETTE["breach_hot"] if k < 2 else PALETTE["breach_red"]
+            col = (self.palette["breach_hot"] if k < 2
+                   else self.palette["breach_red"])
             self._sphere(centre, r, (col[0], col[1], col[2], max(0.05, a)))
         # Red fragment streaks
         glDisable(GL_LIGHTING)
-        c = PALETTE["breach_red"]
+        c = self.palette["breach_red"]
         glColor4f(c[0], c[1], c[2], max(0.0, 0.85 - phase))
         glLineWidth(1.6)
         L = r_P * (0.6 + 2.2 * phase)
@@ -664,7 +715,7 @@ class OpenGLReplayRenderer:
         for rmul in (0.4, 0.9, 1.5):
             r = 1.2 * (1.0 + rmul * phase)
             a = max(0.05, 0.55 - 0.35 * phase)
-            c = PALETTE["vloss_gold"]
+            c = self.palette["vloss_gold"]
             self._sphere(centre, r, (c[0], c[1], c[2], a))
 
     # ------------------------------------------------------------------ #
@@ -712,15 +763,16 @@ class OpenGLReplayRenderer:
 
         # ----- Protected asset: glow shell + solid core -----
         p_P = np.asarray(cfg.geom.p_P, dtype=float)
-        self._sphere(p_P, cfg.geom.r_P, PALETTE["asset_glow"], wire=False)
-        self._sphere(p_P, cfg.geom.r_P, (0.20, 0.95, 0.45, 0.45), wire=True)
-        self._sphere(p_P, cfg.geom.r_P * 0.22, PALETTE["asset_core"])
+        self._sphere(p_P, cfg.geom.r_P, self.palette["asset_glow"], wire=False)
+        ac = self.palette["asset_core"]
+        self._sphere(p_P, cfg.geom.r_P, (ac[0], ac[1], ac[2], 0.45), wire=True)
+        self._sphere(p_P, cfg.geom.r_P * 0.22, self.palette["asset_core"])
 
         # ----- Intruder tube scenarios (faint dashed) -----
         if frame_state.get("intruder_tube") is not None:
             tube = frame_state["intruder_tube"]   # (M, N+1, 3)
             for m in range(tube.shape[0]):
-                self._polyline(tube[m], PALETTE["tube_line"],
+                self._polyline(tube[m], self.palette["tube_line"],
                                width=1.0, dashed=True)
 
         # ----- MPPI defender candidate fan -----
@@ -732,14 +784,14 @@ class OpenGLReplayRenderer:
         trail_def = frame_state.get("trail_def", [])
         trail_int = frame_state.get("trail_int", [])
         if len(trail_def) >= 2:
-            self._polyline(trail_def, PALETTE["defender_trail"], width=2.4)
+            self._polyline(trail_def, self.palette["defender_trail"], width=2.4)
         if len(trail_int) >= 2:
-            self._polyline(trail_int, PALETTE["intruder_trail"], width=2.4)
+            self._polyline(trail_int, self.palette["intruder_trail"], width=2.4)
 
         # ----- LOS line -----
         if not frame_state.get("in_vfx", False):
             self._line(frame_state["p_D"], frame_state["p_A"],
-                       PALETTE["los_line"], width=1.0)
+                       self.palette["los_line"], width=1.0)
 
         # ----- Vehicles -----
         if not frame_state.get("in_vfx", False):
@@ -761,9 +813,9 @@ class OpenGLReplayRenderer:
                                 length=4.0)
             # Velocity arrows.
             self._arrow(frame_state["p_D"], frame_state["v_D"],
-                        PALETTE["defender_body"], max_len=4.0, scale=0.18)
+                        self.palette["defender_body"], max_len=4.0, scale=0.18)
             self._arrow(frame_state["p_A"], frame_state["v_A"],
-                        PALETTE["intruder_body"], max_len=4.0, scale=0.16)
+                        self.palette["intruder_body"], max_len=4.0, scale=0.16)
 
         # ----- VFX -----
         if frame_state.get("in_vfx", False):
@@ -813,15 +865,16 @@ class OpenGLReplayRenderer:
 
         # ----- Protected asset -----
         p_P = np.asarray(cfg.geom.p_P, dtype=float)
-        self._sphere(p_P, cfg.geom.r_P, PALETTE["asset_glow"], wire=False)
-        self._sphere(p_P, cfg.geom.r_P, (0.20, 0.95, 0.45, 0.45), wire=True)
-        self._sphere(p_P, cfg.geom.r_P * 0.22, PALETTE["asset_core"])
+        self._sphere(p_P, cfg.geom.r_P, self.palette["asset_glow"], wire=False)
+        ac = self.palette["asset_core"]
+        self._sphere(p_P, cfg.geom.r_P, (ac[0], ac[1], ac[2], 0.45), wire=True)
+        self._sphere(p_P, cfg.geom.r_P * 0.22, self.palette["asset_core"])
 
         # ----- Intruder tube (faint dashed) -----
         if frame_state.get("intruder_tube") is not None:
             tube = frame_state["intruder_tube"]
             for m in range(tube.shape[0]):
-                self._polyline(tube[m], PALETTE["tube_line"],
+                self._polyline(tube[m], self.palette["tube_line"],
                                width=1.0, dashed=True)
 
         # ----- MPPI candidate fan -----
@@ -844,12 +897,12 @@ class OpenGLReplayRenderer:
         # inside its own cockpit). -----
         trail_int = frame_state.get("trail_int", [])
         if len(trail_int) >= 2:
-            self._polyline(trail_int, PALETTE["intruder_trail"], width=2.4)
+            self._polyline(trail_int, self.palette["intruder_trail"], width=2.4)
 
         # ----- LOS line to the intruder -----
         if not frame_state.get("in_vfx", False):
             self._line(frame_state["p_D"], frame_state["p_A"],
-                       PALETTE["los_line"], width=1.0)
+                       self.palette["los_line"], width=1.0)
 
         # ----- Intruder vehicle (this is the target the defender sees) -----
         if not frame_state.get("in_vfx", False):
@@ -922,6 +975,7 @@ class OpenGLReplayRenderer:
 
     def _draw_pov_hud(self, fs: dict, cfg: SimConfig,
                       theta_F_deg: float, fov_full_deg: float) -> None:
+        clean = bool(fs.get("clean_hud", False))
         cx = self.width * 0.5
         cy = self.height * 0.5
         # Vertical FoV spans the height; an angle theta off-axis maps to
@@ -930,10 +984,28 @@ class OpenGLReplayRenderer:
 
         h_V = float(fs.get("h_V", 0.0))
         lock_on = h_V > 0.0
-        if lock_on:
-            ring_color = (0.30, 0.90, 1.00, 0.85)
+        if self.white_bg:
+            ring_color = ((0.05, 0.40, 0.75, 0.90) if lock_on
+                          else (0.80, 0.10, 0.05, 0.95))
+            reticle_color = (0.10, 0.15, 0.25, 0.80)
+            bracket_rgba = (0.10, 0.30, 0.55, 0.90)
+            strip_rgba = (0.96, 0.97, 0.99, 0.75)
+            title_text = (25, 30, 45)
+            fov_text = (50, 80, 120)
+            lock_text_color = ((20, 110, 55) if lock_on
+                               else (180, 35, 25))
+            stats_text = (45, 50, 60)
         else:
-            ring_color = (1.00, 0.32, 0.28, 0.90)
+            ring_color = ((0.30, 0.90, 1.00, 0.85) if lock_on
+                          else (1.00, 0.32, 0.28, 0.90))
+            reticle_color = (0.85, 0.92, 1.00, 0.75)
+            bracket_rgba = (0.55, 0.85, 1.00, 0.85)
+            strip_rgba = (0.02, 0.04, 0.08, 0.55)
+            title_text = (235, 240, 255)
+            fov_text = (180, 220, 255)
+            lock_text_color = ((140, 240, 170) if lock_on
+                               else (255, 130, 120))
+            stats_text = (220, 225, 235)
 
         # Subtle inner ring at half-angle (gimballed read), then the
         # primary FoV boundary ring at theta_F.
@@ -944,59 +1016,74 @@ class OpenGLReplayRenderer:
 
         # Center reticle.
         self._crosshair_hud(cx, cy, size=22, gap=5,
-                            color=(0.85, 0.92, 1.00, 0.75), width=1.6)
+                            color=reticle_color, width=1.6)
 
-        # Corner brackets to give it that "targeting display" feel.
-        bracket = min(self.width, self.height) * 0.06
-        for (bx, by, sx, sy) in [
-            (12, 12, +1, +1),
-            (self.width - 12, 12, -1, +1),
-            (12, self.height - 12, +1, -1),
-            (self.width - 12, self.height - 12, -1, -1),
-        ]:
-            glDisable(GL_LIGHTING)
-            glLineWidth(2.0)
-            glColor4f(0.55, 0.85, 1.00, 0.85)
-            glBegin(GL_LINES)
-            glVertex2f(bx, by); glVertex2f(bx + sx * bracket, by)
-            glVertex2f(bx, by); glVertex2f(bx, by + sy * bracket)
-            glEnd()
+        if not clean:
+            # Corner brackets to give it that "targeting display" feel.
+            bracket = min(self.width, self.height) * 0.06
+            for (bx, by, sx, sy) in [
+                (12, 12, +1, +1),
+                (self.width - 12, 12, -1, +1),
+                (12, self.height - 12, +1, -1),
+                (self.width - 12, self.height - 12, -1, -1),
+            ]:
+                glDisable(GL_LIGHTING)
+                glLineWidth(2.0)
+                glColor4f(*bracket_rgba)
+                glBegin(GL_LINES)
+                glVertex2f(bx, by); glVertex2f(bx + sx * bracket, by)
+                glVertex2f(bx, by); glVertex2f(bx, by + sy * bracket)
+                glEnd()
 
-        # Title strip (translucent black band).
-        self._rect_hud(0, 0, self.width, 38, (0.02, 0.04, 0.08, 0.55),
-                       filled=True)
-        self._blit_text(14, 8, "DEFENDER CAMERA POV",
-                        color=(235, 240, 255))
-        self._blit_text(self.width - 230, 10,
-                        f"FoV ±{theta_F_deg:.0f}°",
-                        color=(180, 220, 255), font=self._small_font)
+            # Title strip (translucent band, dark on dark / light on light).
+            self._rect_hud(0, 0, self.width, 38, strip_rgba, filled=True)
+            self._blit_text(14, 8, "DEFENDER CAMERA POV", color=title_text)
+            self._blit_text(self.width - 230, 10,
+                            f"FoV ±{theta_F_deg:.0f}°",
+                            color=fov_text, font=self._small_font)
 
-        # Status block (bottom-left): lock / h_V / rho.
-        self._rect_hud(0, self.height - 58, self.width, 58,
-                       (0.02, 0.04, 0.08, 0.55), filled=True)
-        lock_txt = "LOCK ON" if lock_on else "LOCK LOST"
-        lock_color = (140, 240, 170) if lock_on else (255, 130, 120)
-        self._blit_text(14, self.height - 50, lock_txt,
-                        color=lock_color)
-        line2 = (f"t = {fs['t']:5.2f} s   rho = {fs['rho']:5.2f} m   "
-                 f"h_V = {fs['h_V']:+.3f}")
-        self._blit_text(14, self.height - 24, line2,
-                        color=(220, 225, 235), font=self._small_font)
-        line3 = f"|Omega| = {fs['Omega_inf']:5.2f}"
-        self._blit_text(self.width - 130, self.height - 24, line3,
-                        color=(220, 225, 235), font=self._small_font)
+            # Status block (bottom-left): lock / h_V / rho.
+            self._rect_hud(0, self.height - 58, self.width, 58,
+                           strip_rgba, filled=True)
+            lock_txt = "LOCK ON" if lock_on else "LOCK LOST"
+            self._blit_text(14, self.height - 50, lock_txt,
+                            color=lock_text_color)
+            line2 = (f"t = {fs['t']:5.2f} s   rho = {fs['rho']:5.2f} m   "
+                     f"h_V = {fs['h_V']:+.3f}")
+            self._blit_text(14, self.height - 24, line2,
+                            color=stats_text, font=self._small_font)
+            line3 = f"|Omega| = {fs['Omega_inf']:5.2f}"
+            self._blit_text(self.width - 130, self.height - 24, line3,
+                            color=stats_text, font=self._small_font)
 
     def _draw_hud(self, fs: dict, cfg: SimConfig) -> None:
+        if fs.get("clean_hud", False):
+            return
         oc = fs.get("outcome", "in_progress")
-        outcome_color = {
-            "intercept": (124, 252, 139),
-            "breach": (255, 110, 99),
-            "visual_loss": (249, 212, 35),
-            "timeout": (200, 200, 200),
-            "in_progress": (200, 200, 200),
-        }.get(oc, (220, 220, 220))
+        if self.white_bg:
+            outcome_color = {
+                "intercept": (30, 140, 65),
+                "breach": (200, 40, 30),
+                "visual_loss": (170, 125, 0),
+                "timeout": (90, 90, 95),
+                "in_progress": (90, 90, 95),
+            }.get(oc, (60, 60, 70))
+            title_color = (25, 30, 40)
+            stats_color = (55, 60, 70)
+            legend_color = (95, 100, 115)
+        else:
+            outcome_color = {
+                "intercept": (124, 252, 139),
+                "breach": (255, 110, 99),
+                "visual_loss": (249, 212, 35),
+                "timeout": (200, 200, 200),
+                "in_progress": (200, 200, 200),
+            }.get(oc, (220, 220, 220))
+            title_color = (235, 235, 245)
+            stats_color = (220, 220, 230)
+            legend_color = (180, 180, 195)
         title = cfg.scenario.name.upper().replace("_", " ")
-        self._blit_text(18, 14, title, color=(235, 235, 245))
+        self._blit_text(18, 14, title, color=title_color)
         self._blit_text(18, 44, f"outcome: {oc}", color=outcome_color)
         stress_tag = " STRESSED" if fs.get("stressed", 0.0) > 0.5 else ""
         line2 = (f"t = {fs['t']:5.2f} s    rho = {fs['rho']:5.2f} m    "
@@ -1004,7 +1091,7 @@ class OpenGLReplayRenderer:
                  f"eta_V = {fs['eta_V']:+.2f}    "
                  f"|Omega| = {fs['Omega_inf']:5.2f}{stress_tag}")
         self._blit_text(18, self.height - 32, line2,
-                        color=(220, 220, 230), font=self._small_font)
+                        color=stats_color, font=self._small_font)
         # Bottom-right legend.
         legend_lines = [
             "blue: defender",
@@ -1015,7 +1102,7 @@ class OpenGLReplayRenderer:
         ]
         for i, ln in enumerate(legend_lines):
             self._blit_text(self.width - 280, 18 + 18 * i, ln,
-                            color=(180, 180, 195), font=self._mono_font)
+                            color=legend_color, font=self._mono_font)
 
     # ------------------------------------------------------------------ #
     def read_rgb(self) -> bytes:
@@ -1078,6 +1165,7 @@ def render_video_opengl(
     hidden: bool = True,
     view_mode: str = "thirdperson",
     method_tag: str | None = None,
+    white_bg: bool = True,
 ) -> Path:
     """Render a recorded run as a cinematic MP4 via pygame+PyOpenGL+ffmpeg.
 
@@ -1135,7 +1223,8 @@ def render_video_opengl(
     spans = np.ptp(np.vstack([p_D, p_A, [asset]]), axis=0)
     cam_distance = max(cam_distance, float(spans.max()) * 1.05)
 
-    renderer = OpenGLReplayRenderer(width=width, height=height)
+    renderer = OpenGLReplayRenderer(width=width, height=height,
+                                    white_bg=white_bg)
     renderer.cam.target = target_xyz
     renderer.cam.distance = cam_distance
     renderer.cam.yaw_deg = cam_yaw_deg
@@ -1230,6 +1319,180 @@ def render_video_opengl(
         except Exception:
             pass
         proc.wait()
+        renderer.shutdown()
+    return out_path
+
+
+# --------------------------------------------------------------------------- #
+# Single-frame snapshot (PNG) for paper figures
+# --------------------------------------------------------------------------- #
+
+
+def render_snapshot_opengl(
+    metrics: MetricsLog,
+    cfg: SimConfig,
+    out_path: str | Path,
+    *,
+    plan_debug_history: list | None = None,
+    t_snap: float | None = None,
+    width: int = 1280,
+    height: int = 720,
+    cam_yaw_deg: float = 42.0,
+    cam_pitch_deg: float = 20.0,
+    cam_distance: float | None = None,
+    cam_target_mode: str = "drones",
+    trail_seconds: float = 0.8,
+    show_mppi_samples: bool = True,
+    n_samples_drawn: int = 48,
+    show_intruder_tube: bool = False,
+    hidden: bool = True,
+    view_mode: str = "thirdperson",
+    clean_hud: bool = True,
+    white_bg: bool = True,
+    line_scale: float = 1.0,
+) -> Path:
+    """Render a single frame from a recorded run as a PNG.
+
+    `t_snap` selects the snapshot time (defaults to the last simulated
+    record, i.e. the geometry at outcome).  `cam_target_mode="drones"`
+    centres on the (p_D, p_A) midpoint so the defender and intruder fill
+    the frame; `"engagement"` falls back to the full-trajectory centroid
+    used by the video renderer.
+    """
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    if out_path.suffix.lower() != ".png":
+        out_path = out_path.with_suffix(".png")
+
+    recs = metrics.records
+    if not recs:
+        return out_path
+    dt = (recs[1].t - recs[0].t) if len(recs) > 1 else cfg.sim.dt_sim
+
+    if t_snap is None:
+        idx = len(recs) - 1
+    else:
+        idx = int(round(t_snap / max(dt, 1e-6)))
+        idx = max(0, min(idx, len(recs) - 1))
+
+    # Build the same per-frame arrays the video renderer uses, but only
+    # for frames up to and including `idx` (so trails are well-defined).
+    head = recs[: idx + 1]
+    p_D = np.array([r.p_D for r in head], dtype=float)
+    p_A = np.array([r.p_A for r in head], dtype=float)
+    v_D = np.array([r.v_D for r in head], dtype=float)
+    v_A = np.array([r.v_A for r in head], dtype=float)
+    a_A_true = np.array([r.a_A_true for r in head], dtype=float)
+    R_D = np.array([np.asarray(r.R_D_flat, dtype=float).reshape(3, 3)
+                    for r in head])
+    g = cfg.sim.g
+    R_A_seq = np.array([_stable_intruder_R(a_A_true[i], v_A[i], g)
+                        for i in range(len(head))])
+    R_A_seq = _smooth_attitude_sequence(R_A_seq, max(dt, 1e-6), tau=0.18)
+
+    cur = head[-1]
+    p_D_t = np.asarray(cur.p_D, dtype=float)
+    p_A_t = np.asarray(cur.p_A, dtype=float)
+    asset = np.asarray(cfg.geom.p_P, dtype=float)
+    if cam_target_mode == "drones":
+        target_xyz = 0.5 * (p_D_t + p_A_t)
+    elif cam_target_mode == "all":
+        # Target the drones midpoint directly so they sit in the centre
+        # of the frame at full size.  The cam_distance below is then
+        # chosen so the asset still lands near the horizontal edge of
+        # the frame, but tightly cropped.
+        target_xyz = 0.5 * (p_D_t + p_A_t)
+    else:  # "engagement"
+        target_xyz = (asset + p_D.mean(axis=0) + p_A.mean(axis=0)) / 3.0
+
+    if cam_distance is None:
+        if cam_target_mode == "all":
+            # Camera distance chosen so the asset lands close to the
+            # horizontal edge of the frame (since target is the drones
+            # midpoint, |asset - target| is the perpendicular offset
+            # for the broadside "axis" preset).  Vertical FoV is 55deg
+            # but with 16:9 aspect the horizontal half-FoV is ~43deg,
+            # tan(43) ~ 0.93.  factor 1.05 leaves a small visible
+            # margin past the asset before it clips.
+            asset_dist = float(np.linalg.norm(asset - target_xyz))
+            sep = float(np.linalg.norm(p_D_t - p_A_t))
+            cam_distance = max(8.0, sep * 2.0, asset_dist / 0.93 * 1.05)
+        else:
+            sep = float(np.linalg.norm(p_D_t - p_A_t))
+            cam_distance = max(8.0, sep * 2.0)
+
+    renderer = OpenGLReplayRenderer(width=width, height=height,
+                                    white_bg=white_bg,
+                                    line_scale=line_scale)
+    renderer.cam.target = target_xyz
+    renderer.cam.distance = float(cam_distance)
+    renderer.cam.yaw_deg = cam_yaw_deg
+    renderer.cam.pitch_deg = cam_pitch_deg
+    renderer.init(hidden=hidden)
+
+    trail_n = max(2, int(trail_seconds / max(dt, 1e-6)))
+    s = max(0, idx - trail_n)
+    trail_def = p_D[s: idx + 1].tolist()
+    trail_int = p_A[s: idx + 1].tolist()
+
+    mppi_samples = None
+    intruder_tube = None
+    if (show_mppi_samples and plan_debug_history
+            and cur.plan_debug_idx >= 0):
+        dbg_idx = min(cur.plan_debug_idx, len(plan_debug_history) - 1)
+        _t, dbg = plan_debug_history[dbg_idx]
+        weights = dbg.weights
+        risk = dbg.risk_scores
+        vmin = float(risk.min()); vmax = float(risk.max())
+        if vmax - vmin < 1e-6:
+            vmax = vmin + 1.0
+        order = np.argsort(-weights)
+        order = order[: min(n_samples_drawn, len(order))]
+        mppi_samples = []
+        for k in order:
+            norm_cost = float((risk[k] - vmin) / (vmax - vmin))
+            color = _color_for_cost(weights[k], norm_cost)
+            mppi_samples.append((color, dbg.p_D[k]))
+        if show_intruder_tube:
+            intruder_tube = dbg.p_A
+
+    frame_state = {
+        "t": float(cur.t),
+        "rho": float(cur.rho),
+        "h_V": float(cur.h_V),
+        "mu_V": float(cur.mu_V),
+        "Omega_inf": float(np.max(np.abs(cur.Omega_applied))),
+        "eta_V": float(cur.eta_V),
+        "stressed": 1.0 if cur.planner_stressed else 0.0,
+        "p_D": p_D[-1],
+        "v_D": v_D[-1],
+        "R_D": R_D[-1],
+        "p_A": p_A[-1],
+        "v_A": v_A[-1],
+        "R_A": R_A_seq[-1],
+        "trail_def": trail_def,
+        "trail_int": trail_int,
+        "mppi_samples": mppi_samples,
+        "intruder_tube": intruder_tube,
+        "outcome": metrics.summary.outcome,
+        "in_vfx": False,
+        "vfx_centre": np.zeros(3),
+        "vfx_phase": 0.0,
+        "method_tag": None,
+        "clean_hud": bool(clean_hud),
+    }
+    try:
+        if view_mode == "pov":
+            renderer.draw_pov_frame(frame_state, cfg)
+        else:
+            renderer.draw_frame(frame_state, cfg)
+        glFinish()
+        rgb = renderer.read_rgb()
+        # Save the back buffer as a PNG via PIL.
+        from PIL import Image
+        arr = np.frombuffer(rgb, dtype=np.uint8).reshape(height, width, 3)
+        Image.fromarray(arr).save(out_path)
+    finally:
         renderer.shutdown()
     return out_path
 

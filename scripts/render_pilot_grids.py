@@ -34,7 +34,11 @@ def main():
     parser.add_argument("--cell-height", type=int, default=360)
     parser.add_argument("--out-root", type=str,
                         default=str(ROOT / "results/v3/cinematic_grids"))
+    parser.add_argument("--dark-bg", action="store_true",
+                        help="Use the legacy dark cinematic theme instead "
+                             "of the default white-paper theme.")
     args = parser.parse_args()
+    white_bg = not args.dark_bg
 
     out_root = Path(args.out_root)
     out_root.mkdir(parents=True, exist_ok=True)
@@ -53,13 +57,16 @@ def main():
                 seed, cell_dir,
                 attacker=attacker, t_end=args.t_end,
                 width=args.cell_width, height=args.cell_height,
+                white_bg=white_bg,
             )
-            out = out_root / f"grid_{attacker}_seed{seed}.mp4"
+            theme_suffix = "_dark" if not white_bg else ""
+            out = out_root / f"grid_{attacker}{theme_suffix}_seed{seed}.mp4"
             composite_grid(per_method, out,
                            cell_w=args.cell_width,
                            cell_h=args.cell_height,
                            seed=seed,
-                           attacker_label=M.ATTACKER_LABEL.get(attacker, attacker))
+                           attacker_label=M.ATTACKER_LABEL.get(attacker, attacker),
+                           white_bg=white_bg)
             print(f"  total: {time.time() - t0:.1f}s")
     print("\nDone.")
 

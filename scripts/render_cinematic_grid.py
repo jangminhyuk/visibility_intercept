@@ -60,6 +60,7 @@ def render_per_method_videos(
     fps: int = 24, stride: int = 4,
     pip: bool = False, pip_scale: float = 0.34,
     pov_width: int = 720, pov_height: int = 540,
+    white_bg: bool = True,
 ) -> dict:
     """Run each method on the same seed and render a cinematic OpenGL
     video for each.  Returns a dict {method: (mp4_path, summary)}.
@@ -101,6 +102,7 @@ def render_per_method_videos(
                 hidden=True,
                 view_mode="thirdperson",
                 method_tag=METHOD_TITLE[method],
+                white_bg=white_bg,
             )
             print(f"    cinematic mp4: {third_person_path.name}", flush=True)
         except Exception as e:
@@ -125,12 +127,14 @@ def render_per_method_videos(
                     hidden=True,
                     view_mode="pov",
                     method_tag=METHOD_TITLE[method],
+                    white_bg=white_bg,
                 )
                 composite_pip_video(
                     third_person_path, pov_path, pip_path,
                     inset_scale=pip_scale, margin_px=16,
                     corner="top_right",
-                    border_color="white", border_thickness=3,
+                    border_color="black" if white_bg else "white",
+                    border_thickness=3,
                     label="Defender camera POV",
                 )
                 cell_path = pip_path
@@ -156,7 +160,8 @@ def _probe_duration(path: Path) -> float:
 
 def composite_grid(per_method: dict, out_path: Path,
                    cell_w: int = 640, cell_h: int = 360,
-                   seed: int = 0, attacker_label: str = "Smart attacker"):
+                   seed: int = 0, attacker_label: str = "Smart attacker",
+                   white_bg: bool = True):
     """Composite five per-method MP4s into a 2x3 grid using ffmpeg.
 
     Layout (3 wide, 2 tall):
@@ -172,7 +177,7 @@ def composite_grid(per_method: dict, out_path: Path,
     # Build summary panel image
     panel_path = out_path.parent / f".panel_seed{seed}.png"
     _make_summary_panel(per_method, panel_path, cell_w, cell_h,
-                        seed, attacker_label)
+                        seed, attacker_label, white_bg=white_bg)
 
     # Determine the longest cell duration so the grid output ends with
     # the engagement and doesn't tail off into a 30 s loop of the panel.
@@ -242,24 +247,43 @@ def composite_grid(per_method: dict, out_path: Path,
 
 def _make_summary_panel(per_method: dict, out_path: Path,
                         width: int, height: int, seed: int,
-                        attacker_label: str):
+                        attacker_label: str, white_bg: bool = True):
     """Render a static PNG summary panel for the grid's 6th cell."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
+    if white_bg:
+        bg = "#ffffff"
+        title_c = "#1a1f2a"
+        subtitle_c = "#4a5060"
+        header_c = "#6a707c"
+        stats_c = "#2a2f3a"
+        intercept_c = "#1e8e3e"
+        breach_c = "#b3261e"
+        neutral_c = "#5a6070"
+    else:
+        bg = "#101218"
+        title_c = "#e6e8ee"
+        subtitle_c = "#b0b4ba"
+        header_c = "#7f8c8d"
+        stats_c = "#d0d3da"
+        intercept_c = "#27ae60"
+        breach_c = "#c0392b"
+        neutral_c = "#bdc3c7"
+
     fig = plt.figure(figsize=(width / 100, height / 100), dpi=100,
-                      facecolor="#101218")
+                      facecolor=bg)
     ax = fig.add_subplot(111)
-    ax.set_facecolor("#101218")
+    ax.set_facecolor(bg)
     ax.axis("off")
     ax.text(0.5, 0.96,
             f"Per-method summary",
-            ha="center", va="top", color="#e6e8ee",
+            ha="center", va="top", color=title_c,
             fontsize=11, fontweight="bold", transform=ax.transAxes)
     ax.text(0.5, 0.87,
             f"{attacker_label}, seed {seed}",
-            ha="center", va="top", color="#b0b4ba",
+            ha="center", va="top", color=subtitle_c,
             fontsize=8.5, transform=ax.transAxes)
     # Table-like text rows
     rows = []
@@ -272,9 +296,9 @@ def _make_summary_panel(per_method: dict, out_path: Path,
     y0 = 0.74
     dy = 0.13
     headers = "outcome     min ρ    min h_V"
-    ax.text(0.04, y0, "", color="#7f8c8d", fontsize=8.5,
+    ax.text(0.04, y0, "", color=header_c, fontsize=8.5,
             transform=ax.transAxes)
-    ax.text(0.52, y0, headers, color="#7f8c8d", fontsize=8.5,
+    ax.text(0.52, y0, headers, color=header_c, fontsize=8.5,
             family="monospace", transform=ax.transAxes)
     for i, (m, outcome, rho, hmin) in enumerate(rows):
         y = y0 - (i + 1) * dy
@@ -282,18 +306,18 @@ def _make_summary_panel(per_method: dict, out_path: Path,
         ax.text(0.04, y, METHOD_TITLE[m].split(" (")[0],
                 color=color, fontsize=9, fontweight="bold",
                 transform=ax.transAxes)
-        outcome_color = ("#27ae60" if outcome == "intercept"
-                         else "#c0392b" if outcome == "breach"
-                         else "#bdc3c7")
+        outcome_color = (intercept_c if outcome == "intercept"
+                         else breach_c if outcome == "breach"
+                         else neutral_c)
         ax.text(0.52, y, f"{outcome:10s}", color=outcome_color,
                 fontsize=9, family="monospace", transform=ax.transAxes)
-        ax.text(0.70, y, f"{rho:5.2f}", color="#d0d3da",
+        ax.text(0.70, y, f"{rho:5.2f}", color=stats_c,
                 fontsize=9, family="monospace", transform=ax.transAxes)
-        ax.text(0.82, y, f"{hmin:+.2f}", color="#d0d3da",
+        ax.text(0.82, y, f"{hmin:+.2f}", color=stats_c,
                 fontsize=9, family="monospace", transform=ax.transAxes)
 
     fig.tight_layout(pad=0.5)
-    fig.savefig(out_path, dpi=100, facecolor="#101218")
+    fig.savefig(out_path, dpi=100, facecolor=bg)
     plt.close(fig)
 
 
@@ -315,7 +339,11 @@ def main():
                         help="POV-pass render width before scaling.")
     parser.add_argument("--pov-height", type=int, default=540,
                         help="POV-pass render height before scaling.")
+    parser.add_argument("--dark-bg", action="store_true",
+                        help="Use the legacy dark cinematic theme instead "
+                             "of the default white-paper theme.")
     args = parser.parse_args()
+    white_bg = not args.dark_bg
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -329,15 +357,20 @@ def main():
             width=args.cell_width, height=args.cell_height,
             pip=args.pip, pip_scale=args.pip_scale,
             pov_width=args.pov_width, pov_height=args.pov_height,
+            white_bg=white_bg,
         )
         suffix = "_pip" if args.pip else ""
-        out_path = out_dir / f"cinematic_grid{suffix}_seed{seed}.mp4"
+        theme_suffix = "_dark" if not white_bg else ""
+        out_path = out_dir / (
+            f"cinematic_grid{suffix}{theme_suffix}_seed{seed}.mp4"
+        )
         composite_grid(per_method, out_path,
                        cell_w=args.cell_width,
                        cell_h=args.cell_height,
                        seed=seed,
                        attacker_label=M.ATTACKER_LABEL.get(args.attacker,
-                                                          args.attacker))
+                                                          args.attacker),
+                       white_bg=white_bg)
     print("\nDone.")
 
 

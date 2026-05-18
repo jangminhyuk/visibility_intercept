@@ -64,3 +64,6 @@ main2.tex
 *.log
 *.out
 *.synctex.gz
+
+# Paper figure slide (PowerPoint authoring scratch -- kept locally only).
+paper_slide/

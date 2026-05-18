@@ -23,6 +23,10 @@ desktop.ini
 # Per-cell intermediate videos used to build the cinematic grids -- the
 # composited grid_*.mp4 files are what we commit.
 results/v2/final_pilot/cinematic_grids/cells/
+results/v2/final_pilot/cinematic_grids_pip/cells/
+
+# Smoke-test outputs from local POV/PiP work.
+results/pov_smoke/
 
 # Local sweep / iteration directories that don't belong in the repo.
 results/v2/iter*/

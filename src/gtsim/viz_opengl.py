@@ -305,6 +305,31 @@ class OpenGLReplayRenderer:
                   self.cam.target[0], self.cam.target[1], self.cam.target[2],
                   up[0], up[1], up[2])
 
+    def _set_pov_perspective(self, p_D: np.ndarray, R_D: np.ndarray,
+                              b_c: np.ndarray, fov_full_deg: float,
+                              near: float = 0.25, far: float = 500.0) -> None:
+        """Set up projection as if looking through the defender's camera.
+
+        Eye = p_D, forward = R_D @ b_c (world-frame boresight),
+        up = R_D @ [0, 1, 0] (body-y).  FoV here is the *vertical* FoV
+        used by `gluPerspective`; pass `2 * theta_F_deg + margin` if you
+        want the visibility cone boundary to sit inside the viewport.
+        """
+        glViewport(0, 0, self.width, self.height)
+        glMatrixMode(GL_PROJECTION)
+        glLoadIdentity()
+        gluPerspective(fov_full_deg, self.width / max(self.height, 1),
+                       near, far)
+        eye = np.asarray(p_D, dtype=float)
+        forward = R_D @ np.asarray(b_c, dtype=float)
+        up = R_D @ np.array([0.0, 1.0, 0.0])
+        center = eye + forward
+        glMatrixMode(GL_MODELVIEW)
+        glLoadIdentity()
+        gluLookAt(eye[0], eye[1], eye[2],
+                  center[0], center[1], center[2],
+                  up[0], up[1], up[2])
+
     # ------------------------------------------------------------------ #
     # Primitive drawing
     # ------------------------------------------------------------------ #
@@ -758,6 +783,198 @@ class OpenGLReplayRenderer:
         self._draw_hud(frame_state, cfg)
         self._hud_end()
 
+    # ------------------------------------------------------------------ #
+    # First-person POV scene draw (eye attached to defender)
+    # ------------------------------------------------------------------ #
+    def draw_pov_frame(self, frame_state: dict, cfg: SimConfig) -> None:
+        """Render the scene from the defender's onboard camera.
+
+        Eye attached to p_D, looking along R_D @ b_c.  Skips the defender
+        body itself (we're sitting inside it), keeps the intruder,
+        protected asset, MPPI candidate fan, intruder trail, intruder
+        prediction tube, and VFX so the user can see exactly what the
+        on-board pipeline is seeing.  A reticle, FoV ring (at the actual
+        visibility-cone half-angle), and a small status block are drawn
+        on the HUD.
+        """
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+        b_c = np.asarray(cfg.defender.b_c, dtype=float)
+        theta_F_deg = float(cfg.visibility.theta_F_deg)
+        # Use a slightly wider FoV than 2*theta_F so the cone boundary
+        # sits visibly inside the viewport (rather than at the edge).
+        margin_deg = 12.0
+        fov_full_deg = 2.0 * theta_F_deg + margin_deg
+        self._set_pov_perspective(frame_state["p_D"], frame_state["R_D"],
+                                   b_c, fov_full_deg)
+
+        # ----- World ground grid (so the horizon is readable) -----
+        self._grid(size=80.0, step=5.0,
+                   centre=np.array([cfg.geom.p_P[0], cfg.geom.p_P[1], 0.0]))
+
+        # ----- Protected asset -----
+        p_P = np.asarray(cfg.geom.p_P, dtype=float)
+        self._sphere(p_P, cfg.geom.r_P, PALETTE["asset_glow"], wire=False)
+        self._sphere(p_P, cfg.geom.r_P, (0.20, 0.95, 0.45, 0.45), wire=True)
+        self._sphere(p_P, cfg.geom.r_P * 0.22, PALETTE["asset_core"])
+
+        # ----- Intruder tube (faint dashed) -----
+        if frame_state.get("intruder_tube") is not None:
+            tube = frame_state["intruder_tube"]
+            for m in range(tube.shape[0]):
+                self._polyline(tube[m], PALETTE["tube_line"],
+                               width=1.0, dashed=True)
+
+        # ----- MPPI candidate fan -----
+        if frame_state.get("mppi_samples") is not None:
+            for color, pts in frame_state["mppi_samples"]:
+                self._polyline(pts, color, width=1.4)
+
+        # ----- Intruder trail only (defender trail is invisible from
+        # inside its own cockpit). -----
+        trail_int = frame_state.get("trail_int", [])
+        if len(trail_int) >= 2:
+            self._polyline(trail_int, PALETTE["intruder_trail"], width=2.4)
+
+        # ----- LOS line to the intruder -----
+        if not frame_state.get("in_vfx", False):
+            self._line(frame_state["p_D"], frame_state["p_A"],
+                       PALETTE["los_line"], width=1.0)
+
+        # ----- Intruder vehicle (this is the target the defender sees) -----
+        if not frame_state.get("in_vfx", False):
+            self._draw_quadrotor(frame_state["p_A"], frame_state["R_A"],
+                                 cfg.intruder.visual_arm_length,
+                                 palette_prefix="intruder",
+                                 draw_fin=True,
+                                 draw_camera_cone=False)
+
+        # ----- VFX -----
+        if frame_state.get("in_vfx", False):
+            outcome = frame_state["outcome"]
+            phase = frame_state["vfx_phase"]
+            if outcome == "intercept":
+                self._vfx_intercept(frame_state["vfx_centre"], phase,
+                                    cfg.geom.r_c)
+            elif outcome == "breach":
+                self._vfx_breach(frame_state["vfx_centre"], phase,
+                                 cfg.geom.r_P)
+            elif outcome == "visual_loss":
+                self._vfx_vloss(frame_state["vfx_centre"], phase)
+
+        # ----- HUD: reticle, FoV ring, status -----
+        self._hud_begin()
+        self._draw_pov_hud(frame_state, cfg, theta_F_deg, fov_full_deg)
+        self._hud_end()
+
+    def _circle_hud(self, cx: float, cy: float, radius: float,
+                    color: tuple, width: float = 2.0,
+                    segments: int = 96) -> None:
+        glDisable(GL_LIGHTING)
+        glLineWidth(width)
+        glColor4f(*color)
+        glBegin(GL_LINE_LOOP)
+        for i in range(segments):
+            th = 2.0 * math.pi * i / segments
+            glVertex2f(cx + radius * math.cos(th),
+                       cy + radius * math.sin(th))
+        glEnd()
+
+    def _rect_hud(self, x: float, y: float, w: float, h: float,
+                  color: tuple, filled: bool = False,
+                  line_width: float = 2.0) -> None:
+        glDisable(GL_LIGHTING)
+        glColor4f(*color)
+        if filled:
+            glBegin(GL_QUADS)
+            glVertex2f(x, y); glVertex2f(x + w, y)
+            glVertex2f(x + w, y + h); glVertex2f(x, y + h)
+            glEnd()
+        else:
+            glLineWidth(line_width)
+            glBegin(GL_LINE_LOOP)
+            glVertex2f(x, y); glVertex2f(x + w, y)
+            glVertex2f(x + w, y + h); glVertex2f(x, y + h)
+            glEnd()
+
+    def _crosshair_hud(self, cx: float, cy: float, size: float = 18.0,
+                       gap: float = 4.0, color: tuple = (1, 1, 1, 0.7),
+                       width: float = 1.5) -> None:
+        glDisable(GL_LIGHTING)
+        glLineWidth(width)
+        glColor4f(*color)
+        glBegin(GL_LINES)
+        glVertex2f(cx - size, cy); glVertex2f(cx - gap, cy)
+        glVertex2f(cx + gap, cy); glVertex2f(cx + size, cy)
+        glVertex2f(cx, cy - size); glVertex2f(cx, cy - gap)
+        glVertex2f(cx, cy + gap); glVertex2f(cx, cy + size)
+        glEnd()
+
+    def _draw_pov_hud(self, fs: dict, cfg: SimConfig,
+                      theta_F_deg: float, fov_full_deg: float) -> None:
+        cx = self.width * 0.5
+        cy = self.height * 0.5
+        # Vertical FoV spans the height; an angle theta off-axis maps to
+        # screen radius theta / (fov_full / 2) * (H / 2).
+        radius_px = theta_F_deg / (fov_full_deg * 0.5) * (self.height * 0.5)
+
+        h_V = float(fs.get("h_V", 0.0))
+        lock_on = h_V > 0.0
+        if lock_on:
+            ring_color = (0.30, 0.90, 1.00, 0.85)
+        else:
+            ring_color = (1.00, 0.32, 0.28, 0.90)
+
+        # Subtle inner ring at half-angle (gimballed read), then the
+        # primary FoV boundary ring at theta_F.
+        self._circle_hud(cx, cy, radius_px * 0.5,
+                         (ring_color[0], ring_color[1], ring_color[2], 0.30),
+                         width=1.2)
+        self._circle_hud(cx, cy, radius_px, ring_color, width=2.4)
+
+        # Center reticle.
+        self._crosshair_hud(cx, cy, size=22, gap=5,
+                            color=(0.85, 0.92, 1.00, 0.75), width=1.6)
+
+        # Corner brackets to give it that "targeting display" feel.
+        bracket = min(self.width, self.height) * 0.06
+        for (bx, by, sx, sy) in [
+            (12, 12, +1, +1),
+            (self.width - 12, 12, -1, +1),
+            (12, self.height - 12, +1, -1),
+            (self.width - 12, self.height - 12, -1, -1),
+        ]:
+            glDisable(GL_LIGHTING)
+            glLineWidth(2.0)
+            glColor4f(0.55, 0.85, 1.00, 0.85)
+            glBegin(GL_LINES)
+            glVertex2f(bx, by); glVertex2f(bx + sx * bracket, by)
+            glVertex2f(bx, by); glVertex2f(bx, by + sy * bracket)
+            glEnd()
+
+        # Title strip (translucent black band).
+        self._rect_hud(0, 0, self.width, 38, (0.02, 0.04, 0.08, 0.55),
+                       filled=True)
+        self._blit_text(14, 8, "DEFENDER CAMERA POV",
+                        color=(235, 240, 255))
+        self._blit_text(self.width - 230, 10,
+                        f"FoV ±{theta_F_deg:.0f}°",
+                        color=(180, 220, 255), font=self._small_font)
+
+        # Status block (bottom-left): lock / h_V / rho.
+        self._rect_hud(0, self.height - 58, self.width, 58,
+                       (0.02, 0.04, 0.08, 0.55), filled=True)
+        lock_txt = "LOCK ON" if lock_on else "LOCK LOST"
+        lock_color = (140, 240, 170) if lock_on else (255, 130, 120)
+        self._blit_text(14, self.height - 50, lock_txt,
+                        color=lock_color)
+        line2 = (f"t = {fs['t']:5.2f} s   rho = {fs['rho']:5.2f} m   "
+                 f"h_V = {fs['h_V']:+.3f}")
+        self._blit_text(14, self.height - 24, line2,
+                        color=(220, 225, 235), font=self._small_font)
+        line3 = f"|Omega| = {fs['Omega_inf']:5.2f}"
+        self._blit_text(self.width - 130, self.height - 24, line3,
+                        color=(220, 225, 235), font=self._small_font)
+
     def _draw_hud(self, fs: dict, cfg: SimConfig) -> None:
         oc = fs.get("outcome", "in_progress")
         outcome_color = {
@@ -848,6 +1065,8 @@ def render_video_opengl(
     n_samples_drawn: int = 64,
     show_intruder_tube: bool = True,
     hidden: bool = True,
+    view_mode: str = "thirdperson",
+    method_tag: str | None = None,
 ) -> Path:
     """Render a recorded run as a cinematic MP4 via pygame+PyOpenGL+ffmpeg.
 
@@ -981,8 +1200,12 @@ def render_video_opengl(
                 "in_vfx": in_vfx,
                 "vfx_centre": vfx_centre,
                 "vfx_phase": vfx_phase,
+                "method_tag": method_tag,
             }
-            renderer.draw_frame(frame_state, cfg)
+            if view_mode == "pov":
+                renderer.draw_pov_frame(frame_state, cfg)
+            else:
+                renderer.draw_frame(frame_state, cfg)
             # Read the back buffer (where we just drew) BEFORE flipping it
             # to the front -- otherwise we read the *previous* frame and
             # the first frame is blank.
@@ -998,3 +1221,79 @@ def render_video_opengl(
         proc.wait()
         renderer.shutdown()
     return out_path
+
+
+# --------------------------------------------------------------------------- #
+# PiP composition (third-person base + POV inset)
+# --------------------------------------------------------------------------- #
+
+
+def composite_pip_video(
+    base_path: str | Path,
+    inset_path: str | Path,
+    out_path: str | Path,
+    inset_scale: float = 0.28,
+    margin_px: int = 24,
+    corner: str = "top_right",
+    border_color: str = "white",
+    border_thickness: int = 3,
+    label: str | None = None,
+) -> Path:
+    """Composite a POV MP4 as a labeled PiP inset over a third-person MP4.
+
+    Uses ffmpeg's filter_complex.  Both inputs must share an fps but may
+    differ in size and duration -- the shorter input is held on its last
+    frame to match (`tpad=stop_mode=clone`).
+    """
+    base = Path(base_path)
+    inset = Path(inset_path)
+    out = Path(out_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    if corner == "top_right":
+        pos = f"x=W-w-{margin_px}:y={margin_px}"
+    elif corner == "top_left":
+        pos = f"x={margin_px}:y={margin_px}"
+    elif corner == "bottom_right":
+        pos = f"x=W-w-{margin_px}:y=H-h-{margin_px}"
+    elif corner == "bottom_left":
+        pos = f"x={margin_px}:y=H-h-{margin_px}"
+    else:
+        pos = f"x=W-w-{margin_px}:y={margin_px}"
+
+    bt = max(1, int(border_thickness))
+    inset_chain = (
+        f"[1:v]tpad=stop_mode=clone:stop_duration=10,"
+        f"scale=iw*{inset_scale:.3f}:ih*{inset_scale:.3f},"
+        f"pad=iw+{2*bt}:ih+{2*bt}:{bt}:{bt}:color={border_color}"
+    )
+    if label:
+        safe_label = label.replace(":", r"\:").replace("'", r"\'")
+        inset_chain += (
+            f",drawtext=text='{safe_label}':"
+            f"x=8:y=h-th-6:fontcolor=white:fontsize=18:"
+            f"box=1:boxcolor=black@0.55:boxborderw=4"
+        )
+    inset_chain += "[pip]"
+
+    overlay = f"[0:v][pip]overlay={pos}:shortest=0"
+    filter_complex = inset_chain + ";" + overlay
+
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", str(base),
+        "-i", str(inset),
+        "-filter_complex", filter_complex,
+        "-c:v", "libx264", "-pix_fmt", "yuv420p",
+        "-preset", "medium", "-crf", "20",
+        "-loglevel", "warning",
+        str(out),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"ffmpeg PiP composite failed:\n"
+            f"  cmd: {' '.join(cmd)}\n"
+            f"  stderr: {result.stderr}"
+        )
+    return out

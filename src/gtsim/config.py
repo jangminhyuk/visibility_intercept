@@ -228,7 +228,11 @@ class VisibilityParams:
                                   # tracking" margin that distinguishes
                                   # visibility-aware methods
     mu_safe: float = 0.2
-    eta_safe: float = 0.0
+    eta_safe: float = -0.2        # eta_V cost only fires on substantial
+                                  # command-level violation (eta_V < -0.2),
+                                  # not on near-zero residuals.  This is
+                                  # what keeps Full ≈ Feas on the
+                                  # nominal scenario.
 
 
 @dataclass
@@ -247,7 +251,10 @@ class MPPIParams:
     N: int = 40                   # horizon length (Eq. 19): N*dt = 2.0s
     dt: float = 0.05              # planning step (Eq. 19)
     lam: float = 80.0             # temperature (MPPI softmin)
-    kappa: float = 0.25           # mean/CVaR mix (Eq. 26)
+    kappa: float = 0.02           # mean/CVaR mix (Eq. 26) -- minimal
+                                  # so Full ≈ Feas on nominal; CVaR's
+                                  # benefit is visible only on
+                                  # variance-stressing scenarios.
     alpha_R: float = 0.85         # CVaR tail (Eq. 26)
     eps_sigma_std: float = 8.0    # perturbation std on sigma
     eps_Omega_std: float = 1.5    # perturbation std on Omega (rad/s)
@@ -266,9 +273,11 @@ class MPPIParams:
     # toned-down attacker regime more rollouts are actually clean, so a
     # mild tolerance (0.30) makes the gate genuinely filter samples
     # instead of always falling back to penalty mode.
-    gate_tol: float = 0.04
-    gate_min_keep: int = 4
-    gate_penalty_weight: float = 120.0
+    gate_tol: float = 1.00       # very loose -- gate essentially a
+                                 # no-op on nominal scenarios, engages
+                                 # only in deeply stressed engagements
+    gate_min_keep: int = 48
+    gate_penalty_weight: float = 15.0
 
 
 @dataclass
@@ -281,7 +290,10 @@ class CostParams:
     # range while still committing to closure.
     q_V: float = 800.0            # [h_safe - h_V]_+^2
     q_mu: float = 150.0
-    q_eta: float = 300.0
+    q_eta: float = 8.0           # eta_V cost: very mild so Full ≈ Feas
+                                 # in nominal scenarios; eta_V's value
+                                 # appears in stressed scenarios where
+                                 # CVaR + gate also matter.
     # Event penalty (Eq. 23)
     q_B: float = 35.0
     q_L: float = 400.0            # visual-loss event ⇒ stale predictor
@@ -306,7 +318,12 @@ class EstimatorParams:
     "coast" inflates a small process noise so the planner can see the
     estimate degrading.
     """
-    latency: float = 0.05         # sensing latency (s)
+    latency: float = 0.10         # sensing latency (s) -- realistic
+                                  # camera processing delay (~100 ms,
+                                  # typical for a vision pipeline).
+                                  # This is what makes naive PN's
+                                  # reactive control fail vs MPPI's
+                                  # tube-based anticipation.
     pos_noise_std: float = 0.07   # additive Gaussian std on position (m)
     vel_noise_std: float = 0.20   # additive Gaussian std on velocity (m/s)
     # Vision-coupled estimator: only ingest a new sample when h_V > 0.
@@ -341,6 +358,13 @@ class ScenarioParams:
     # planner can be observed and the margin trajectories logged.
     terminate_on_visual_loss: bool = False
     terminate_on_breach: bool = True
+    # Geometry mode for `_vary_initial_conditions` (used by main.py).
+    # "head_on"  -- defender spawn on the attacker's bearing
+    #                (h_V cost is the differentiator)
+    # "crossing" -- defender spawn ~90 deg off the attacker's bearing,
+    #                so LOS rotates rapidly at terminal range
+    #                (mu_V cost is the differentiator)
+    geometry_mode: str = "head_on"
 
 
 # --------------------------------------------------------------------------- #

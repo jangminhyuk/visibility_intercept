@@ -62,6 +62,7 @@ class _Sample:
     v: np.ndarray
     a: np.ndarray
     R: np.ndarray
+    h_V: float = 1.0     # visibility margin at observation time
 
 
 class IntruderEstimator:
@@ -90,39 +91,60 @@ class IntruderEstimator:
         check inside `estimate`)."""
         R = attacker_attitude_from_accel(state.a, g)
         s = _Sample(t=t, p=state.p.copy(), v=state.v.copy(),
-                    a=state.a.copy(), R=R)
+                    a=state.a.copy(), R=R, h_V=float(h_V_now))
         self.buf.append(s)
         if h_V_now >= 0.0:
             self.last_visible = s
 
     def estimate(self, t_now: float) -> _Sample | None:
+        """Realistic camera-pipeline estimator.
+
+        Pipeline delay: an observation taken at time t is AVAILABLE to
+        the planner at time t + latency.  Therefore the most recent data
+        available at t_now is from physical time target_t = t_now - latency.
+
+        Vision-gated: the planner only receives an observation if the
+        target was inside the FoV at the observation time (h_V > 0).
+        If the most-recent-visible observation is older than target_t,
+        the estimator coasts on a constant-velocity model forward to
+        target_t with noise that inflates with coast age.
+        """
         ep = self.cfg.estimator
         if not self.buf:
             return None
+        target_t = t_now - ep.latency
         if ep.vision_gated:
-            # If lock has never been acquired, use the latest buffered
-            # ground-truth sample so the planner has *some* state.
-            if self.last_visible is None:
-                base = self.buf[-1]
-            else:
+            # The latest visible buffered sample with t <= target_t is
+            # what physically reaches the planner right now.  If no such
+            # sample exists, coast on `last_visible`.
+            candidates = [s for s in self.buf
+                          if s.t <= target_t + 1e-9 and s.h_V > 0.0]
+            if candidates:
+                base = candidates[-1]   # most recent visible-and-arrived
+                coast_age = max(0.0, target_t - base.t)
+                coast_factor = 1.0
+            elif self.last_visible is not None:
+                # Lock was lost before any sample at target_t arrived.
+                # Coast from last visible.
                 base = self.last_visible
-                # Coast cap: stale samples beyond coast_max_age get
-                # large measurement noise (they're effectively useless).
-                age = max(0.0, t_now - base.t - ep.latency)
-                if age > ep.coast_max_age:
-                    # heavy noise: planner has effectively lost target
+                coast_age = max(0.0, target_t - base.t)
+                if coast_age > ep.coast_max_age:
                     coast_factor = float(ep.coast_max_noise_scale)
                 else:
                     coast_factor = 1.0 + (
                         (ep.coast_max_noise_scale - 1.0)
-                        * age / max(1e-6, ep.coast_max_age))
-            # Constant-velocity coast from base sample.
-            target_t = t_now - ep.latency
-            dt_coast = max(0.0, target_t - base.t)
-            p_coast = base.p + base.v * dt_coast
+                        * coast_age / max(1e-6, ep.coast_max_age))
+            else:
+                # No lock ever acquired.  Use latest available buffered
+                # sample (we still want the planner to have *some*
+                # initial state guess).
+                base = self.buf[-1]
+                coast_age = 0.0
+                coast_factor = float(ep.coast_max_noise_scale)
+            # Constant-velocity coast from base to target_t.
+            p_coast = base.p + base.v * coast_age
             v_coast = base.v.copy()
-            scale = (coast_factor if self.last_visible is not None
-                     else 1.0)
+            scale = coast_factor
             p_hat = p_coast + self.rng.normal(0.0,
                                               ep.pos_noise_std * scale,
                                               size=3)
@@ -130,7 +152,8 @@ class IntruderEstimator:
                                               ep.vel_noise_std * scale,
                                               size=3)
             a_hat = base.a.copy()
-            return _Sample(t=base.t, p=p_hat, v=v_hat, a=a_hat, R=base.R)
+            return _Sample(t=target_t, p=p_hat, v=v_hat, a=a_hat,
+                            R=base.R, h_V=base.h_V)
         # Legacy (non-gated) path: pick closest buffered sample.
         target_t = t_now - ep.latency
         best = self.buf[0]

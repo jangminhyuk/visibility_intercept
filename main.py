@@ -50,6 +50,7 @@ from gtsim.video3d import render_video_3d  # noqa: E402
 
 try:
     from gtsim.viz_opengl import render_video_opengl  # noqa: E402
+    from gtsim.viz_opengl import composite_pip_video  # noqa: E402
     _HAVE_OPENGL = True
 except Exception as _e:
     _HAVE_OPENGL = False
@@ -88,14 +89,57 @@ ATTACKER_LABEL = {
 
 
 def _render_video(metrics, cfg, out_path, fps, stride, plan_debug_history,
-                  prefer_opengl: bool = True):
+                  prefer_opengl: bool = True,
+                  pip: bool = False,
+                  pip_width: int = 640,
+                  pip_height: int = 480,
+                  pip_scale: float = 0.30,
+                  method_tag: str | None = None):
+    """Render an MP4 of a recorded run.
+
+    If `pip=True` and the OpenGL renderer is available, also renders a
+    first-person defender-POV pass and composites it as a PiP inset.
+    The cinematic third-person video is always written to `out_path`;
+    the PiP variant lands at `out_path.with_name(stem + '_pip.mp4')`
+    and the raw POV is kept alongside as `*_pov.mp4` for reference.
+    """
     if prefer_opengl and _HAVE_OPENGL:
         try:
-            return render_video_opengl(
+            third_person_path = render_video_opengl(
                 metrics, cfg, out_path,
                 plan_debug_history=plan_debug_history,
                 fps=fps, stride=stride,
+                view_mode="thirdperson",
+                method_tag=method_tag,
             )
+            if pip:
+                stem = Path(out_path).stem
+                parent = Path(out_path).parent
+                pov_path = parent / f"{stem}_pov.mp4"
+                pip_path = parent / f"{stem}_pip.mp4"
+                render_video_opengl(
+                    metrics, cfg, pov_path,
+                    plan_debug_history=plan_debug_history,
+                    fps=fps, stride=stride,
+                    width=pip_width, height=pip_height,
+                    view_mode="pov",
+                    method_tag=method_tag,
+                )
+                label = "Defender camera POV (FoV \\u00B130\\u00B0)"
+                # Keep the label ASCII-safe — ffmpeg's drawtext does not
+                # play well with curly degree signs across builds.
+                label = "Defender camera POV"
+                try:
+                    composite_pip_video(
+                        third_person_path, pov_path, pip_path,
+                        inset_scale=pip_scale, margin_px=28,
+                        corner="top_right",
+                        border_color="white", border_thickness=3,
+                        label=label,
+                    )
+                except Exception as e:
+                    print(f"  [warn] PiP composite failed: {e!r}")
+            return third_person_path
         except Exception as e:
             print(f"  [warn] OpenGL render failed: {e!r}; falling back to mpl.")
     return render_video_3d(
@@ -150,9 +194,19 @@ def _vary_initial_conditions(cfg: SimConfig, seed: int) -> SimConfig:
     speed0 = float(rng.uniform(12.0, 14.5))
     cfg.intruder.v0 = (to_asset * speed0).tolist()
 
-    # Defender on threat axis, slight altitude advantage.
-    def_az = int_az + float(rng.uniform(-np.pi / 12, np.pi / 12))
-    def_dist = float(rng.uniform(15.0, 22.0))
+    geom_mode = getattr(cfg.scenario, "geometry_mode", "head_on")
+    if geom_mode == "crossing":
+        # Defender spawns ~90 deg off the attacker's bearing, so the
+        # defender flies "across" the attack line.  LOS rotates rapidly
+        # at terminal range -- the regime where mu_V becomes binding.
+        side = 1.0 if rng.uniform() > 0.5 else -1.0
+        def_az = int_az + side * (np.pi / 2 + float(rng.uniform(-np.pi / 12,
+                                                                  np.pi / 12)))
+        def_dist = float(rng.uniform(12.0, 18.0))
+    else:
+        # head_on: defender on threat axis (default)
+        def_az = int_az + float(rng.uniform(-np.pi / 12, np.pi / 12))
+        def_dist = float(rng.uniform(15.0, 22.0))
     z_def = z_int + float(rng.uniform(2.0, 5.0))
     cfg.defender.p0 = [p_asset[0] + def_dist * float(np.cos(def_az)),
                        p_asset[1] + def_dist * float(np.sin(def_az)),
@@ -416,6 +470,12 @@ def cmd_demo(args: argparse.Namespace) -> int:
             fps=args.video_fps, stride=args.video_stride,
             plan_debug_history=world.plan_debug_history,
             prefer_opengl=(not args.video_mpl),
+            pip=args.pip,
+            pip_width=args.pip_width,
+            pip_height=args.pip_height,
+            pip_scale=args.pip_scale,
+            method_tag=METHOD_LABEL.get(cfg.scenario.planner_method,
+                                        cfg.scenario.planner_method).split("\n")[0],
         )
         print(f"  video:                {path.name}  ({time.time()-t0v:.1f}s)")
     print(f"  outputs:              {out_dir}/")
@@ -470,6 +530,12 @@ def cmd_videos(args: argparse.Namespace) -> int:
                     fps=args.video_fps, stride=args.video_stride,
                     plan_debug_history=world.plan_debug_history,
                     prefer_opengl=(not args.video_mpl),
+                    pip=args.pip,
+                    pip_width=args.pip_width,
+                    pip_height=args.pip_height,
+                    pip_scale=args.pip_scale,
+                    method_tag=METHOD_LABEL.get(
+                        method, method).split("\n")[0],
                 )
                 video_wall = time.time() - t0v
                 print(f"  video: {path.relative_to(out_root)} "
@@ -1191,6 +1257,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--video-stride", type=int, default=4)
     parser.add_argument("--video-mpl", action="store_true",
                         help="Force matplotlib renderer (fallback).")
+    parser.add_argument("--pip", action="store_true",
+                        help="Also render defender first-person POV and "
+                             "composite as a PiP inset on the cinematic.")
+    parser.add_argument("--pip-width", type=int, default=640,
+                        help="POV pass render width before scaling.")
+    parser.add_argument("--pip-height", type=int, default=480,
+                        help="POV pass render height before scaling.")
+    parser.add_argument("--pip-scale", type=float, default=0.30,
+                        help="Inset size as fraction of base width (0.20-0.40).")
     # Map mode
     parser.add_argument("--a-max-vals", type=str, default="",
                         help="Comma-separated intruder a_max values for map.")

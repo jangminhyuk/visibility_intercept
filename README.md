@@ -94,6 +94,31 @@ For each showcase seed this:
 
 Output: `results/v2/final_pilot/cinematic_grids/grid_pilot_{hard,easy}_seed*.mp4`.
 
+#### 3a. Defender-POV picture-in-picture
+
+Add `--pip` to either the single-method demo or the cinematic grid to
+render a *first-person* defender-camera pass and composite it as an
+inset over the third-person view:
+
+```powershell
+# Single trial with PiP — writes run.mp4, run_pov.mp4, run_pip.mp4.
+py main.py --mode demo --method full --attacker pilot_hard --seed 4 ^
+   --video --pip --pip-scale 0.34
+
+# Full 5-method PiP grids for the showcase seeds.
+py scripts/render_cinematic_grid.py ^
+   --seeds 1 4 5 12 --attacker pilot_hard ^
+   --pip --pip-scale 0.34 ^
+   --out-dir results/v2/final_pilot/cinematic_grids_pip
+```
+
+The POV pass uses `gluPerspective(2·θ_F + margin, …)` with eye at
+`p_D`, forward along `R_D · b_c`, and up along body-y, so the FoV
+ring on the HUD matches the actual visibility cone (`±30°`).  The
+ring turns red and the status line reads `LOCK LOST` whenever
+`h_V < 0`, which makes the failure mode of Naive PN visually
+unmistakable — the intruder simply walks off the edge of the cone.
+
 ### 4. Single-trial demo (one method)
 
 ```powershell
@@ -101,7 +126,8 @@ py main.py --mode demo --method full --attacker pilot_hard --seed 4 --video
 ```
 
 Writes `results/v2/demo_pilot_hard_full_seed4/` with the time-series
-plot, MPPI snapshots, 3D trajectory, and optional MP4.
+plot, MPPI snapshots, 3D trajectory, and optional MP4 (add `--pip` to
+also get `run_pov.mp4` + `run_pip.mp4`).
 
 ## Method ablation (paper Sec. VII + naive baseline)
 
@@ -258,7 +284,7 @@ visibility_intercept/
 │   ├── metrics.py              # StepRecord, RunSummary, MetricsLog
 │   ├── viz.py                  # matplotlib trajectory + time-series plots
 │   ├── video3d.py              # matplotlib fallback video renderer
-│   ├── viz_opengl.py           # cinematic OpenGL video renderer
+│   ├── viz_opengl.py           # cinematic OpenGL renderer (3rd-person + defender POV + PiP composite)
 │   └── video_grid.py           # 2×3 method-comparison grid renderer (mpl)
 ├── scripts/
 │   ├── make_paper_summary.py   # builds the headline figure

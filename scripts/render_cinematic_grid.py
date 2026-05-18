@@ -32,7 +32,7 @@ sys.path.insert(0, str(ROOT))
 
 import main as M  # noqa: E402
 from gtsim.world import run_headless  # noqa: E402
-from gtsim.viz_opengl import render_video_opengl  # noqa: E402
+from gtsim.viz_opengl import render_video_opengl, composite_pip_video  # noqa: E402
 
 
 METHOD_ORDER = ("pn", "range_only", "visibility_cost",
@@ -58,9 +58,15 @@ def render_per_method_videos(
     seed: int, out_dir: Path, attacker: str = "smart",
     t_end: float = 3.5, width: int = 640, height: int = 360,
     fps: int = 24, stride: int = 4,
+    pip: bool = False, pip_scale: float = 0.34,
+    pov_width: int = 720, pov_height: int = 540,
 ) -> dict:
     """Run each method on the same seed and render a cinematic OpenGL
-    video for each.  Returns a dict {method: (mp4_path, summary)}."""
+    video for each.  Returns a dict {method: (mp4_path, summary)}.
+
+    If `pip=True`, also renders a first-person defender-POV pass and
+    composites it as a labelled inset on the third-person video.  The
+    returned `mp4_path` is the PiP-composited version in that mode."""
     out_dir.mkdir(parents=True, exist_ok=True)
     results = {}
     for method in METHOD_ORDER:
@@ -78,10 +84,10 @@ def render_per_method_videos(
               f"min_rho={s.min_rho:5.2f} h_min={s.min_h_V:+.2f}  "
               f"({sim_t:.1f}s)", flush=True)
         # Render the cinematic OpenGL video at the per-cell resolution.
-        mp4_path = out_dir / f"seed{seed}_{method}.mp4"
+        third_person_path = out_dir / f"seed{seed}_{method}.mp4"
         try:
             render_video_opengl(
-                world.metrics, cfg, mp4_path,
+                world.metrics, cfg, third_person_path,
                 plan_debug_history=world.plan_debug_history,
                 fps=fps, stride=stride,
                 width=width, height=height,
@@ -93,12 +99,46 @@ def render_per_method_videos(
                 n_samples_drawn=48,
                 show_intruder_tube=False,
                 hidden=True,
+                view_mode="thirdperson",
+                method_tag=METHOD_TITLE[method],
             )
-            print(f"    cinematic mp4: {mp4_path.name}", flush=True)
+            print(f"    cinematic mp4: {third_person_path.name}", flush=True)
         except Exception as e:
             print(f"    OpenGL render failed: {e!r}", flush=True)
             raise
-        results[method] = (mp4_path, asdict(s))
+
+        cell_path = third_person_path
+        if pip:
+            pov_path = out_dir / f"seed{seed}_{method}_pov.mp4"
+            pip_path = out_dir / f"seed{seed}_{method}_pip.mp4"
+            try:
+                render_video_opengl(
+                    world.metrics, cfg, pov_path,
+                    plan_debug_history=world.plan_debug_history,
+                    fps=fps, stride=stride,
+                    width=pov_width, height=pov_height,
+                    trail_seconds=1.2,
+                    extra_seconds_after_outcome=1.0,
+                    show_mppi_samples=True,
+                    n_samples_drawn=48,
+                    show_intruder_tube=False,
+                    hidden=True,
+                    view_mode="pov",
+                    method_tag=METHOD_TITLE[method],
+                )
+                composite_pip_video(
+                    third_person_path, pov_path, pip_path,
+                    inset_scale=pip_scale, margin_px=16,
+                    corner="top_right",
+                    border_color="white", border_thickness=3,
+                    label="Defender camera POV",
+                )
+                cell_path = pip_path
+                print(f"    pip mp4:       {pip_path.name}", flush=True)
+            except Exception as e:
+                print(f"    POV/PiP render failed: {e!r}", flush=True)
+                # Fall back to plain third-person cell.
+        results[method] = (cell_path, asdict(s))
     return results
 
 
@@ -266,6 +306,15 @@ def main():
     parser.add_argument("--cell-height", type=int, default=360)
     parser.add_argument("--out-dir", type=str,
                         default=str(ROOT / "results/v2/final5j/cinematic_grids"))
+    parser.add_argument("--pip", action="store_true",
+                        help="Render defender first-person POV and composite "
+                             "as a PiP inset on each cell.")
+    parser.add_argument("--pip-scale", type=float, default=0.34,
+                        help="Inset size as fraction of cell width (0.20-0.40).")
+    parser.add_argument("--pov-width", type=int, default=720,
+                        help="POV-pass render width before scaling.")
+    parser.add_argument("--pov-height", type=int, default=540,
+                        help="POV-pass render height before scaling.")
     args = parser.parse_args()
 
     out_dir = Path(args.out_dir)
@@ -278,8 +327,11 @@ def main():
             seed, cell_dir,
             attacker=args.attacker, t_end=args.t_end,
             width=args.cell_width, height=args.cell_height,
+            pip=args.pip, pip_scale=args.pip_scale,
+            pov_width=args.pov_width, pov_height=args.pov_height,
         )
-        out_path = out_dir / f"cinematic_grid_seed{seed}.mp4"
+        suffix = "_pip" if args.pip else ""
+        out_path = out_dir / f"cinematic_grid{suffix}_seed{seed}.mp4"
         composite_grid(per_method, out_path,
                        cell_w=args.cell_width,
                        cell_h=args.cell_height,

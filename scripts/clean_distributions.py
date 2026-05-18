@@ -60,7 +60,7 @@ def lock_loss_seconds(r):
 
 def make_plot(results, attacker_label, out_path):
     by = by_method(results)
-    fig, axes = plt.subplots(1, 3, figsize=(17, 5))
+    fig, axes = plt.subplots(1, 3, figsize=(17, 5.2))
 
     # ---- Panel 1: Outcome counts (n breach / n intercept / n vis_loss) ----
     ax = axes[0]
@@ -108,11 +108,20 @@ def make_plot(results, attacker_label, out_path):
     parts['cmedians'].set_linewidth(1.5)
     for key in ("cmaxes", "cmins", "cbars"):
         parts[key].set_edgecolor("#444")
+    # Compute the actual data range to set ylim sensibly, then place
+    # the n=... labels just above the lower edge of the panel.
+    flat_vals = [v for d in data for v in d if d]
+    if flat_vals:
+        y_lo = min(flat_vals) - 0.10
+        y_hi = max(max(flat_vals), 3.85) + 0.20
+    else:
+        y_lo, y_hi = 0.0, 4.0
+    ax.set_ylim(y_lo, y_hi)
     for i, (d, c) in enumerate(zip(data, counts)):
-        ax.text(i, 0.05, f"n={c}", ha="center", va="bottom",
+        ax.text(i, y_lo + 0.03, f"n={c}", ha="center", va="bottom",
                 fontsize=8, color="#444")
         if d:
-            ax.text(i, max(d) + 0.1,
+            ax.text(i, max(d) + 0.04,
                     f"med={np.median(d):.2f}m",
                     ha="center", va="bottom", fontsize=8.5,
                     fontweight="bold")
@@ -162,9 +171,10 @@ def make_plot(results, attacker_label, out_path):
 
     fig.suptitle(
         f"Clean per-method distributions ({attacker_label}, n=60 per method)",
-        fontweight="bold", fontsize=13.5, y=1.02)
-    fig.tight_layout()
-    plt.savefig(out_path, dpi=140, bbox_inches="tight")
+        fontweight="bold", fontsize=13.5, y=0.99)
+    fig.subplots_adjust(left=0.05, right=0.99, top=0.86,
+                        bottom=0.16, wspace=0.30)
+    plt.savefig(out_path, dpi=140)
     plt.close(fig)
     print(f"  wrote {out_path}")
 

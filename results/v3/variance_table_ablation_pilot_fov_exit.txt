@@ -1,0 +1,10 @@
+Reliability summary (FoV-exit pilot)
+================================================================================
+method                    P_succ            (95% CI)  mean lock-loss    std minrho
+Naive PN                     27% [   17%,   39%]           0.206s          0.62
+Range-MPPI                   70% [   57%,   80%]           0.087s          0.41
+Vision-MPPI                  73% [   61%,   83%]           0.082s          0.41
+Feas-MPPI                    70% [   57%,   80%]           0.074s          0.43
+Proposed                     72% [   59%,   81%]           0.060s          0.47
+
+Note: Wilson 95% confidence interval on P_succ from n=60 Bernoulli trials per method.  Overlapping CIs means the methods are statistically tied on P_succ.

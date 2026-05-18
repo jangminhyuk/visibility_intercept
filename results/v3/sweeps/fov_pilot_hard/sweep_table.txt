@@ -1,0 +1,13 @@
+# Parameter sweep: visibility.theta_F_deg
+# attacker: pilot_hard, n=40 per point per method
+
+visibility.theta_F_deg      Naive PN    Range-MPPI   Vision-MPPI     Feas-MPPI      Proposed
+                10           2%            5%            0%            2%            0%   
+                15           8%           15%           10%           10%           15%   
+                20          12%           52%           55%           38%           42%   
+                25          28%           57%           60%           57%           60%   
+                30          30%           65%           68%           62%           70%   
+                35          32%           72%           70%           68%           72%   
+                40          38%           72%           70%           70%           72%   
+
+(Columns: strict P_succ per method.)

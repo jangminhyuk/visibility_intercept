@@ -1,0 +1,12 @@
+# Parameter sweep: estimator.latency
+# attacker: pilot_hard, n=40 per point per method
+
+ estimator.latency      Naive PN    Range-MPPI   Vision-MPPI     Feas-MPPI      Proposed
+              0.05          30%           78%           72%           78%           72%   
+               0.1          30%           65%           68%           62%           70%   
+              0.15          30%           50%           50%           45%           48%   
+               0.2          28%           35%           38%           30%           22%   
+              0.25          28%           35%           32%           32%           35%   
+               0.3          28%           32%           32%           25%           22%   
+
+(Columns: strict P_succ per method.)

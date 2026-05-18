@@ -1,0 +1,18 @@
+Lock-loss -> intercept analysis (FoV-exit pilot)
+================================================================================
+Within each method, intercept rate by lock-loss-time bucket:
+
+method                    [0.0-0.05)   [0.05-0.15)    [0.15-0.3)     [0.3-1.0)
+Naive PN                   100%(n=29)     100%(n=2)         (n=0)       0%(n=29)
+Range-MPPI                 100%(n=45)       0%(n=1)       0%(n=4)       0%(n=10)
+Vision-MPPI                100%(n=46)       0%(n=1)       0%(n=4)       0%(n=9)
+Feas-MPPI                  100%(n=46)       0%(n=3)       0%(n=3)       0%(n=8)
+Proposed                   100%(n=47)       0%(n=2)       0%(n=5)       0%(n=6)
+
+Per-method aggregate:
+method                  mean ll(s)  median ll(s)   intercept   strict P_succ
+Naive PN                     0.206         0.055         52%             27%
+Range-MPPI                   0.087         0.000         75%             70%
+Vision-MPPI                  0.082         0.000         77%             73%
+Feas-MPPI                    0.074         0.000         77%             70%
+Proposed                     0.060         0.000         78%             72%

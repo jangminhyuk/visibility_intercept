@@ -1,0 +1,18 @@
+Lock-loss -> intercept analysis (Hard pilot)
+================================================================================
+Within each method, intercept rate by lock-loss-time bucket:
+
+method                    [0.0-0.05)   [0.05-0.15)    [0.15-0.3)     [0.3-1.0)
+Naive PN                   100%(n=31)     100%(n=1)         (n=0)       0%(n=28)
+Range-MPPI                 100%(n=42)       0%(n=3)       0%(n=2)       0%(n=13)
+Vision-MPPI                100%(n=40)       0%(n=3)       0%(n=2)       0%(n=15)
+Feas-MPPI                  100%(n=40)       0%(n=6)         (n=0)       0%(n=14)
+Proposed                   100%(n=43)       0%(n=5)       0%(n=2)       0%(n=10)
+
+Per-method aggregate:
+method                  mean ll(s)  median ll(s)   intercept   strict P_succ
+Naive PN                     0.199         0.040         53%             28%
+Range-MPPI                   0.110         0.000         70%             65%
+Vision-MPPI                  0.117         0.000         67%             65%
+Feas-MPPI                    0.117         0.000         67%             62%
+Proposed                     0.087         0.000         72%             67%

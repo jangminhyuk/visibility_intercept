@@ -27,6 +27,11 @@ results/v3/cinematic_grids_pip/cells/
 results/v3/cinematic_grids_pip_fov_exit/cells/
 results/v3/cinematic_grids_*/cells/
 
+# Large raw sweep JSONs (25-30 MB each) -- regenerable via
+# scripts/parameter_sweep.py.  The plots and tables alongside them
+# are what we commit.
+results/v3/sweeps/*/raw_sweep.json
+
 # Smoke-test outputs (POV/PiP scratch, parameter sweeps).
 results/pov_smoke/
 results/v3/smoke_*/

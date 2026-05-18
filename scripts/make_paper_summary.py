@@ -64,17 +64,24 @@ def main():
     base = ROOT / "results/v3"
     abl_smart = json.load(open(base / "ablation_pilot_hard/raw_results.json"))
     abl_juke = json.load(open(base / "ablation_pilot_easy/raw_results.json"))
+    fov_path = base / "ablation_pilot_fov_exit/raw_results.json"
+    abl_fov = json.load(open(fov_path)) if fov_path.exists() else None
 
-    fig = plt.figure(figsize=(20, 13))
-    gs = fig.add_gridspec(3, 5, hspace=0.50, wspace=0.40,
+    fig = plt.figure(figsize=(22, 14))
+    gs = fig.add_gridspec(3, 6, hspace=0.55, wspace=0.45,
                           height_ratios=[1.0, 1.05, 1.0])
 
-    # Row 1: bar charts for each attacker
-    for ax_idx, (data, attacker_name) in enumerate([
-            (abl_smart, "Hard pilot (multi-break, banking)"),
-            (abl_juke, "Easy pilot (gentle banking)")]):
+    # Row 1: bar charts for each attacker (3 panels, 2 grid cols each)
+    panels_row1 = [
+        (abl_juke, "Easy pilot (gentle banking)"),
+        (abl_smart, "Hard pilot (multi-break, banking)"),
+    ]
+    if abl_fov is not None:
+        panels_row1.append((abl_fov, "FoV-exit pilot (camera-aware break)"))
+
+    for ax_idx, (data, attacker_name) in enumerate(panels_row1):
         by = by_method(data)
-        ax = fig.add_subplot(gs[0, ax_idx * 2 + ax_idx:(ax_idx + 1) * 2 + ax_idx + 1])
+        ax = fig.add_subplot(gs[0, ax_idx * 2:(ax_idx + 1) * 2])
         xs = np.arange(len(METHODS))
         n_arr = np.array([len(by[m]) for m in METHODS], dtype=float)
         inter = np.array([sum(1 for r in by[m] if r["outcome"] == "intercept")
@@ -117,25 +124,36 @@ def main():
                 bbox=dict(boxstyle="round,pad=0.4", facecolor="#eaf7ed",
                           edgecolor="#27ae60"))
 
-    # Row 2: time-series bands for hard attacker
-    by = by_method(abl_smart)
+    # Row 2: time-series bands for the FoV-exit attacker (the most
+    # discriminating scenario), falling back to the hard pilot if
+    # the FoV-exit ablation hasn't been run.
+    ts_data = abl_fov if abl_fov is not None else abl_smart
+    ts_title = ("FoV-exit pilot" if abl_fov is not None
+                else "Hard pilot")
+    by = by_method(ts_data)
     dt = 0.02
-    t_max = min(4.0, max(r["end_time"] for r in abl_smart))
+    t_max = min(4.0, max(r["end_time"] for r in ts_data))
     t_grid = np.arange(0, t_max + dt, dt)
     panels = [
         ("ts_h_V",   r"$h_V$  (visibility margin)",  (-1.5, 0.45),
          [(0, "lock lost (h_V=0)", "red")]),
-        ("ts_mu_V",  r"$\mu_V$  (feasibility margin)", (-2, 45),
+        ("ts_mu_V",  r"$\mu_V$  (feasibility margin)", (-3, 45),
          [(0, "infeasible (mu_V=0)", "red")]),
         ("ts_eta_V", r"$\eta_V$  (command residual)", (-4, 4),
          [(0, "", "red")]),
         ("ts_rho",   r"$\rho$  (defender-attacker range, m)", (0, 35),
          [(3.8, "r_c (intercept envelope)", "green")]),
-        ("ts_Omega_inf", r"$\|\Omega\|_\infty$  (body rate, rad/s)", (0, 16),
-         [(14.0, "Omega_max", "red")]),
+        ("ts_Omega_inf", r"$\|\Omega\|_\infty$  (body rate, rad/s)", (0, 12),
+         [(8.0, "Omega_max", "red")]),
     ]
+    # Five time-series panels evenly spaced across the same grid.
+    n_panels = len(panels)
     for col, (field, ylab, ylim, refs) in enumerate(panels):
-        ax = fig.add_subplot(gs[1, col])
+        # Distribute 5 panels across 6 columns by giving panel 2 (eta_V)
+        # a wider slot, or simpler: just span columns evenly.
+        start = int(round(col * 6 / n_panels))
+        end = int(round((col + 1) * 6 / n_panels))
+        ax = fig.add_subplot(gs[1, start:max(end, start + 1)])
         for m in METHODS:
             runs = by[m]
             if not runs:
@@ -162,11 +180,12 @@ def main():
         if col == 0:
             ax.legend(fontsize=7, loc="lower right", ncol=1)
         if col == 2:
-            ax.set_title("Hard pilot time-series  (median + 35-65 pctile band)",
+            ax.set_title(f"{ts_title} time-series  (median + 35-65 pctile band)",
                          fontweight="bold", fontsize=11)
 
     # Row 3: summary table + per-method visibility "scorecard"
-    ax_tbl = fig.add_subplot(gs[2, 0:2])
+    # using the time-series scenario data (FoV-exit if available).
+    ax_tbl = fig.add_subplot(gs[2, 0:3])
     ax_tbl.axis("off")
     header = ["Method", "intercept", r"$P_{\rm succ}$",
               r"$\langle h_{\min}\rangle$", r"$\langle\eta_{\rm viol}\rangle$"]
@@ -191,11 +210,11 @@ def main():
     tbl.auto_set_font_size(False)
     tbl.set_fontsize(12)
     tbl.scale(1.0, 2.0)
-    ax_tbl.set_title(f"Hard pilot — summary table (n={int(max(len(by[m]) for m in METHODS))})",
+    ax_tbl.set_title(f"{ts_title} — summary table (n={int(max(len(by[m]) for m in METHODS))})",
                      fontweight="bold", fontsize=12)
 
     # Row 3: bar chart of h_min per method
-    ax_h = fig.add_subplot(gs[2, 2])
+    ax_h = fig.add_subplot(gs[2, 3])
     h_vals = [np.median([r["min_h_V"] for r in by[m]]) for m in METHODS]
     ax_h.bar(np.arange(len(METHODS)), h_vals,
              color=[METHOD_COLOR[m] for m in METHODS], alpha=0.95,
@@ -215,7 +234,7 @@ def main():
     ax_h.grid(alpha=0.3, axis="y")
 
     # Row 3: bar chart of eta_viol per method
-    ax_e = fig.add_subplot(gs[2, 3])
+    ax_e = fig.add_subplot(gs[2, 4])
     e_vals = [np.mean([r["eta_viol_integral"] for r in by[m]]) for m in METHODS]
     ax_e.bar(np.arange(len(METHODS)), e_vals,
              color=[METHOD_COLOR[m] for m in METHODS], alpha=0.95,
@@ -232,7 +251,7 @@ def main():
     ax_e.grid(alpha=0.3, axis="y")
 
     # Row 3: bar chart of frac_eta_V_negative
-    ax_f = fig.add_subplot(gs[2, 4])
+    ax_f = fig.add_subplot(gs[2, 5])
     f_vals = [np.mean([r["fraction_eta_V_negative"] for r in by[m]])
               for m in METHODS]
     ax_f.bar(np.arange(len(METHODS)), f_vals,

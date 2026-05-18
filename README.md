@@ -141,7 +141,7 @@ same horizon, same softmin update, same PN warmstart for the nominal
 trajectory).  They differ only in the **cost function** that scores each
 sampled trajectory.
 
-### Cost terms in the paper (Eq. 24)
+### Cost terms in the paper
 
 For a sampled defender trajectory rolled forward against a sampled
 intruder scenario:
@@ -218,7 +218,7 @@ Three things at once:
   planner's choice when the cost distribution over scenarios is
   heavy-tailed (rare hard attacker behaviors).
 
-**Rollout gate (Eq. 27)** — strict filter
+**Rollout gate** — strict filter
 - **Question it answers**: "Are there *any* samples in this batch with
   zero predicted visibility violations?  If yes, use only those."
 - **Why it matters**: Even with strong soft costs, MPPI's softmin can
@@ -279,12 +279,12 @@ visibility_intercept/
 ├── src/gtsim/
 │   ├── config.py               # SimConfig + PLANNER_METHODS + method_weights
 │   ├── so3.py                  # Rodrigues exp/log, project_so3
-│   ├── dynamics.py             # step_defender (Eq.1), step_intruder (Eq.19)
-│   ├── visibility.py           # h_V, c_Omega, c_v, mu_V, eta_V (Eqs.5–14)
-│   ├── tube.py                 # Eq.18 intruder scenario tube
+│   ├── dynamics.py             # step_defender, step_intruder
+│   ├── visibility.py           # h_V, c_Omega, c_v, mu_V, eta_V
+│   ├── tube.py                 # intruder scenario tube
 │   ├── attacker.py             # pilot_easy / pilot_hard / open-loop modes
 │   ├── risk.py                 # exact-CVaR + mean+CVaR aggregation
-│   ├── mppi.py                 # rollout cost (Eq.24) + gate (Eq.27) + PN warmstart
+│   ├── mppi.py                 # rollout cost + gate + PN warmstart
 │   ├── world.py                # sim loop, vision-gated estimator, terminal commit
 │   ├── metrics.py              # StepRecord, RunSummary, MetricsLog
 │   ├── viz.py                  # matplotlib trajectory + time-series plots
@@ -301,21 +301,21 @@ visibility_intercept/
 
 ## Paper-symbol → code mapping
 
-| Paper symbol | Code | Equation |
-|--------------|------|----------|
-| x<sub>D</sub> = (p<sub>D</sub>, v<sub>D</sub>, R<sub>D</sub>), u<sub>D</sub> = (σ<sub>D</sub>, Ω<sub>D</sub>) | `dynamics.DefenderState`, `step_defender` | (1), (2) |
-| r, v, ρ, r̂ | `visibility.los` | (3) |
-| b<sub>D</sub> = R<sub>D</sub> b<sub>c</sub> | `visibility.boresight_world` | (5) |
-| h<sub>V</sub> = b<sub>D</sub>ᵀr̂ − cos θ<sub>F</sub> | `visibility.h_V` | (5) |
-| ḣ<sub>V</sub> = c<sub>Ω</sub>ᵀ Ω<sub>D</sub> + c<sub>v</sub> | `visibility.c_Omega`, `c_v` | (8)–(9) |
-| μ<sub>V</sub> feasibility margin | `visibility.mu_V` | (13) |
-| η<sub>V</sub> sampled-cmd residual | `visibility.eta_V` | (14) |
-| Intruder scenario tube Q<sub>N</sub> | `tube.build_intruder_tube` | (17)–(18) |
-| Rollout cost J(U<sub>D</sub>, Q<sub>A</sub>; t) | `mppi.rollout_costs_and_gate` | (24) |
-| Event penalty ℓ<sub>ev</sub> | inside same | (23) |
-| Rollout-level gate G<sub>i</sub> | inside same | (27) |
-| Risk score (1−κ) J̄ + κ CVaR | `risk.mean_plus_cvar_batch` | (26) |
-| MPPI softmin + gate filter | `mppi.softmin_update` | (post-27) |
+| Paper symbol | Code |
+|--------------|------|
+| x<sub>D</sub> = (p<sub>D</sub>, v<sub>D</sub>, R<sub>D</sub>), u<sub>D</sub> = (σ<sub>D</sub>, Ω<sub>D</sub>) | `dynamics.DefenderState`, `step_defender` |
+| r, v, ρ, r̂ | `visibility.los` |
+| b<sub>D</sub> = R<sub>D</sub> b<sub>c</sub> | `visibility.boresight_world` |
+| h<sub>V</sub> = b<sub>D</sub>ᵀr̂ − cos θ<sub>F</sub> | `visibility.h_V` |
+| ḣ<sub>V</sub> = c<sub>Ω</sub>ᵀ Ω<sub>D</sub> + c<sub>v</sub> | `visibility.c_Omega`, `c_v` |
+| μ<sub>V</sub> feasibility margin | `visibility.mu_V` |
+| η<sub>V</sub> sampled-cmd residual | `visibility.eta_V` |
+| Intruder scenario tube Q<sub>N</sub> | `tube.build_intruder_tube` |
+| Rollout cost J(U<sub>D</sub>, Q<sub>A</sub>; t) | `mppi.rollout_costs_and_gate` |
+| Event penalty ℓ<sub>ev</sub> | inside same |
+| Rollout-level gate G<sub>i</sub> | inside same |
+| Risk score (1−κ) J̄ + κ CVaR | `risk.mean_plus_cvar_batch` |
+| MPPI softmin + gate filter | `mppi.softmin_update` |
 
 ## Safety note
 

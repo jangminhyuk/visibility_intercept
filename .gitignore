@@ -24,6 +24,8 @@ desktop.ini
 # composited grid_*.mp4 files are what we commit.
 results/v3/cinematic_grids/cells/
 results/v3/cinematic_grids_pip/cells/
+results/v3/cinematic_grids_pip_fov_exit/cells/
+results/v3/cinematic_grids_*/cells/
 
 # Smoke-test outputs (POV/PiP scratch, parameter sweeps).
 results/pov_smoke/

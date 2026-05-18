@@ -159,87 +159,129 @@ def main():
                               facecolor="#eaf7ed",
                               edgecolor="#27ae60", linewidth=0.8))
 
-    # ===== Panel 2: Lock-loss bucket -> intercept rate =====
+    # ===== Panel 2: Lock-loss => intercept failure (aggregate) =====
     ax = fig.add_subplot(gs[0, 1])
-    # Use FoV-exit data (most discriminating).
+    # Pool runs across all 5 methods (5 x 60 = 300 runs) so the
+    # buckets have meaningful sample sizes.  The point of this panel
+    # is to show that the threshold is the same for every method --
+    # so pooling them is honest.
     by = by_method(abl_fov)
-    bins = [0.0, 0.05, 0.30, 1.0]
-    bin_labels = [
-        "$< 50$ ms\n(lock\nmaintained)",
-        "$50$-$300$ ms\n(brief\nloss)",
-        "$> 300$ ms\n(catastrophic\nloss)",
-    ]
-    x_base2 = np.arange(len(bin_labels))
-    bar_w2 = 0.16
-    for j, m in enumerate(METHODS):
-        rates = []
-        counts = []
-        for i in range(len(bins) - 1):
-            lo, hi = bins[i], bins[i + 1]
-            in_bin = [r for r in by[m]
-                      if lo <= lock_loss_seconds(r) < hi]
-            counts.append(len(in_bin))
-            if not in_bin:
-                rates.append(np.nan)
-            else:
-                rates.append(
-                    sum(1 for r in in_bin if r["outcome"] == "intercept")
-                    / len(in_bin))
-        rates_arr = np.asarray(rates, dtype=float)
-        xs = x_base2 + (j - len(METHODS) / 2 + 0.5) * bar_w2
-        ax.bar(xs, np.nan_to_num(rates_arr, nan=0.0) * 100,
-               width=bar_w2,
-               color=METHOD_COLOR[m], alpha=0.95,
-               edgecolor="white", linewidth=0.6)
-        for xpos, rate, cnt in zip(xs, rates, counts):
-            if cnt == 0 or np.isnan(rate):
-                ax.text(xpos, 3, "n=0", ha="center", va="bottom",
-                        fontsize=6.5, color="#888", rotation=90)
-            else:
-                ax.text(xpos, rate * 100 + 2, f"{rate*100:.0f}",
-                        ha="center", va="bottom", fontsize=7,
-                        fontweight="bold")
-                ax.text(xpos, 3, f"n={cnt}", ha="center", va="bottom",
-                        fontsize=6.5, color="#444")
-    ax.set_xticks(x_base2)
+    all_runs = []
+    for m in METHODS:
+        all_runs.extend(by[m])
+    lock_times = np.asarray([lock_loss_seconds(r) for r in all_runs])
+    intercept = np.asarray([1 if r["outcome"] == "intercept" else 0
+                            for r in all_runs])
+
+    bins = [0.0, 0.025, 0.050, 0.075, 0.100, 0.150, 0.300, 1.0]
+    bin_labels = ["0–25", "25–50", "50–75", "75–100",
+                  "100–150", "150–300", "300+"]
+    bin_rates = []
+    bin_counts = []
+    for i in range(len(bins) - 1):
+        lo, hi = bins[i], bins[i + 1]
+        mask = (lock_times >= lo) & (lock_times < hi)
+        bin_counts.append(int(mask.sum()))
+        if mask.sum() == 0:
+            bin_rates.append(np.nan)
+        else:
+            bin_rates.append(float(intercept[mask].mean()))
+    bin_rates = np.asarray(bin_rates)
+    x_pos2 = np.arange(len(bin_labels))
+    # Color bars green->red across the threshold
+    colors = []
+    for r in bin_rates:
+        if np.isnan(r):
+            colors.append("#cccccc")
+        elif r > 0.7:
+            colors.append("#27ae60")
+        elif r > 0.3:
+            colors.append("#f39c12")
+        else:
+            colors.append("#c0392b")
+    ax.bar(x_pos2, np.nan_to_num(bin_rates, nan=0.0) * 100,
+           color=colors, alpha=0.95, edgecolor="white", linewidth=0.7)
+    for xp, rate, cnt in zip(x_pos2, bin_rates, bin_counts):
+        if cnt == 0:
+            ax.text(xp, 3, "n=0", ha="center", va="bottom",
+                    fontsize=8, color="#888")
+        else:
+            label = f"{rate*100:.0f}%" if not np.isnan(rate) else ""
+            ax.text(xp, rate * 100 + 2, label,
+                    ha="center", va="bottom", fontsize=10,
+                    fontweight="bold")
+            ax.text(xp, -7, f"n={cnt}", ha="center", va="top",
+                    fontsize=8, color="#444")
+    # Threshold line at 50 ms (where intercept rate collapses)
+    ax.axvline(1.5, color="black", ls="--", lw=1.5, alpha=0.7)
+    ax.text(1.55, 90, "50 ms\nthreshold", fontsize=9,
+            color="black", fontweight="bold", va="top")
+    ax.set_xticks(x_pos2)
     ax.set_xticklabels(bin_labels, fontsize=9.5)
-    ax.set_xlabel("Total lock-loss time per engagement",
+    ax.set_xlabel("Total lock-loss time per engagement (ms)",
                   fontsize=10)
     ax.set_ylabel("Intercept rate within bucket (%)", fontsize=11)
-    ax.set_ylim(0, 115)
-    ax.set_title("(B) Lock loss $\\rightarrow$ intercept failure is\n"
-                 "essentially deterministic (FoV-exit pilot, n=60)",
-                 fontweight="bold", fontsize=11.5)
+    ax.set_ylim(-15, 115)
+    ax.set_title("(B) The 50 ms threshold: above this, intercept "
+                 "rate collapses\n"
+                 "(pooled across all 5 methods on FoV-exit pilot, "
+                 f"N={len(all_runs)} engagements)",
+                 fontweight="bold", fontsize=11)
     ax.grid(alpha=0.3, axis="y")
 
-    # ===== Panel 3: Mean lock-loss per method (the actionable advantage) =====
+    # ===== Panel 3: Mean lock-loss time per method =====
+    # Each engagement contributes a single number: how many ms (over
+    # the whole run) was the intruder outside the FoV cone.  The
+    # *mean* of this across runs captures BOTH how often a method
+    # crosses the 50 ms threshold AND how badly it crosses it when
+    # it does (severity).  Median is 0 ms for every MPPI method
+    # (most runs maintain lock perfectly), so mean is the right
+    # statistic here -- it weights the catastrophic-failure runs
+    # that Panel B shows are causally fatal.
     ax = fig.add_subplot(gs[0, 2])
     means = []
     medians = []
+    p75s = []
     for m in METHODS:
-        ll = [lock_loss_seconds(r) for r in by[m]]
-        means.append(np.mean(ll) * 1000)        # ms
-        medians.append(np.median(ll) * 1000)
+        ll = [lock_loss_seconds(r) * 1000 for r in by[m]]
+        means.append(np.mean(ll))
+        medians.append(np.median(ll))
+        p75s.append(np.percentile(ll, 75))
     x_pos = np.arange(len(METHODS))
     ax.bar(x_pos, means,
            color=[METHOD_COLOR[m] for m in METHODS],
-           alpha=0.95, edgecolor="white", linewidth=0.6,
-           label="mean")
-    for i, v in enumerate(means):
-        ax.text(x_pos[i], v + 4, f"{v:.0f} ms", ha="center",
-                fontsize=9, fontweight="bold")
+           alpha=0.95, edgecolor="white", linewidth=0.6)
+    for i, (mean, med, p75) in enumerate(zip(means, medians, p75s)):
+        ax.text(x_pos[i], mean + 5, f"{mean:.0f} ms",
+                ha="center", fontsize=10, fontweight="bold")
+        # Show median + 75th percentile as small annotation underneath
+        # so the reader sees the distribution shape, not just the mean.
+        ax.text(x_pos[i], -12,
+                f"med={med:.0f}\np75={p75:.0f}",
+                ha="center", va="top", fontsize=7.5,
+                color="#555")
     ax.set_xticks(x_pos)
     ax.set_xticklabels([METHOD_LABEL[m] for m in METHODS],
                        rotation=20, fontsize=9.5, ha="right")
-    ax.set_ylabel("Mean total lock-loss time per engagement (ms)",
-                  fontsize=10.5)
-    ax.set_ylim(0, max(means) * 1.25)
-    range_mean = means[METHODS.index("range_only")]
+    ax.set_ylabel("Mean total lock-loss time per engagement (ms)\n"
+                  "(lower = fewer + shorter visibility outages)",
+                  fontsize=10)
+    ax.set_ylim(-35, max(means) * 1.30)
     full_mean = means[METHODS.index("full")]
-    rel_drop = (range_mean - full_mean) / range_mean * 100
-    ax.set_title(f"(C) Proposed has the lowest lock-loss time\n"
-                 f"(-{rel_drop:.0f}% vs Range-MPPI, FoV-exit pilot)",
-                 fontweight="bold", fontsize=11.5)
+    range_mean = means[METHODS.index("range_only")]
+    rel_drop = ((range_mean - full_mean) / range_mean * 100
+                if range_mean > 0 else 0)
+    ax.set_title(
+        f"(C) Proposed reduces mean lock-loss time by "
+        f"{rel_drop:.0f}% vs Range-MPPI\n"
+        f"({full_mean:.0f} ms vs {range_mean:.0f} ms; "
+        f"FoV-exit pilot, n=60)",
+        fontweight="bold", fontsize=10.5)
+    # Add a 50 ms reference line (the Panel B threshold)
+    ax.axhline(50, color="black", ls=":", lw=1.0, alpha=0.6)
+    ax.text(len(METHODS) - 0.5, 52, "50 ms threshold (Panel B)",
+            ha="right", va="bottom", fontsize=7.5, color="#444",
+            style="italic")
     # Highlight the proposed bar
     ax.add_patch(plt.Rectangle(
         (x_pos[METHODS.index("full")] - 0.45, 0),
